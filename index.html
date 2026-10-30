@@ -386,6 +386,7 @@ function load() {
   }
   if (!Array.isArray(state.crypto)) state.crypto = DEFAULT_CRYPTO.map(c => ({ ...c, sale: { ...c.sale } }));
   const h = lsGet(LS.hist); if (h && Array.isArray(h.points)) hist = h;
+  if (!hist.quotes && hist.last && hist.last.quotes) hist.quotes = { ...hist.last.quotes };
   const k = lsGet(LS.keys); if (k) keys = { ...keys, ...k };
 }
 function saveState() { if (!lsSet(LS.state, state)) toast('Opslaan mislukt: browseropslag niet beschikbaar.'); renderBackup(); }
@@ -635,13 +636,19 @@ function parts() {
   const L = hist.last && hist.last.parts;
   const big = v => (v == null ? null : BigInt(v));
   if (si) {
-    if (valuation && valuation.complete) out.stocks = { hold: valuation.totalCents, cash: si.cashCents, fresh: true };
-    else out.stocks = { hold: L && L.stocks ? big(L.stocks.hold) : (hist.last && hist.last.holdCents != null ? big(hist.last.holdCents) : null), cash: si.cashCents, fresh: false };
+    const key = si.sold.map(x => x.p.ticker.toUpperCase()).sort().join(',');
+    const anyCached = valuation && valuation.rows.some(r => r.sale && r.q && r.q.cached);
+    if (valuation && valuation.complete) out.stocks = { hold: valuation.totalCents, cash: si.cashCents, fresh: !anyCached };
+    else out.stocks = { hold: L && L.stocks && L.stocks.key === key ? big(L.stocks.hold) : null, cash: si.cashCents, fresh: false };   // nooit een oude HOLD over andere aandelen gebruiken
+    out.stocks.key = key;
     out.stocks.gross = si.grossCents; out.stocks.fee = si.feeCents; out.stocks.n = si.sold.length;
   }
   if ((state.crypto || []).some(c => validCryptoSale(c))) {
+    out.crypto = null;
     if (cryptoVal && cryptoVal.complete && cryptoVal.any) out.crypto = { hold: cryptoVal.hold, cash: cryptoVal.cash, fresh: true };
-    else out.crypto = { hold: L && L.crypto ? big(L.crypto.hold) : null, cash: L && L.crypto ? big(L.crypto.cash) : null, fresh: false };
+    const key = (state.crypto || []).filter(c => validCryptoSale(c)).map(c => c.ticker.toUpperCase() + ':' + c.sale.proceeds).sort().join(',');
+    if (cryptoVal && cryptoVal.complete && cryptoVal.any) out.crypto.key = key;
+    else out.crypto = { hold: L && L.crypto && L.crypto.key === key ? big(L.crypto.hold) : null, cash: L && L.crypto && L.crypto.key === key ? big(L.crypto.cash) : null, fresh: false, key };
   }
   return out;
 }
@@ -667,7 +674,10 @@ function renderTiles() {
       $('diffAmt').textContent = fmtCents(diff, { sign: true });
       diffT.className = 'tile wide ' + (diff > 0n ? 'pos' : diff < 0n ? 'neg' : '');
       $('diffSub').textContent = diffWord(diff);
-    } else { $('diffAmt').textContent = '—'; $('diffSub').textContent = 'Wacht op live koersen'; }
+    } else {
+      const missing = state.positions.filter(p => validSale(p) && !(valuation && valuation.rows.some(r => r.pos === p && r.q))).map(p => p.ticker);
+      $('diffAmt').textContent = '—'; $('diffSub').textContent = missing.length ? 'Geen koers voor ' + missing.join(', ') + '. Zonder alle koersen toont de app geen verschil.' : 'Wacht op live koersen';
+    }
   }
   // aandelen tegenover crypto
   const col = (amtId, metaId, v, extra) => {
@@ -692,12 +702,14 @@ function renderPositions() {
     if (r.q) {
       valHtml = fmtCents(r.cents);
       priceHtml = '$' + fmtDec(r.price, decimalsOf(r.q.p));
-      if (r.stale) badge = '<span class="badge stale">verouderd</span>';
+      if (r.q.cached) badge = '<span class="badge stale">laatst bekend ' + fmtTime(r.q.t, TZ_BE, false) + '</span>';
+      else if (r.stale) badge = '<span class="badge stale">verouderd</span>';
       else if (isDelayed(r.q, p.market, Date.now())) badge = '<span class="badge stale">15 min vertraagd</span>';
       else if (r.q.session && r.q.session !== 'regular' && r.q.session !== 'closed') badge = '<span class="badge ext">' + SESSION_NL[r.q.session] + '</span>';
-      else if (r.q.session === 'closed') badge = '<span class="badge">slotkoers</span>';
+      else if (r.q.session === 'closed' && Date.now() - r.q.t > 30 * 60e3) badge = '<span class="badge">slotkoers</span>';
       if (sale) { const chg = ddiv(r.eurPerShare - sale.eurPerShare, sale.eurPerShare); chgHtml = '<span class="' + (chg < 0n ? 'down' : 'up') + '">' + fmtPct(chg) + '</span>'; }
     } else if (q) priceHtml = '$' + fmtDec(numToDec(q.p), decimalsOf(q.p)) + ' <span class="badge">niet live</span>';
+    else if (sale && valuation) priceHtml = '<span class="warn">geen koers</span>';
     const avg = parseNum(p.avg);
     const meta2 = sale ? 'Verkocht ' + fmtDate(sale.at) + ' ' + fmtTime(sale.at, TZ_BE, false) + (p.sale.orders > 1 ? ' (' + p.sale.orders + ' orders, gem.' : ' aan') + ' $' + fmtDec(sale.price, p.sale.orders > 1 ? 4 : 2) + (p.sale.orders > 1 ? ')' : '') + ' → ' + fmtCents(toCents(sale.net)) + ' netto'
       : '<span class="warn">Nog in bezit</span> · niet meegeteld in HOLD en CASH';
@@ -1005,7 +1017,14 @@ async function refresh(manual) {
   refreshing = true; $('btnRefresh').disabled = true; $('btnRefresh').textContent = 'Bezig…';
   try {
     const res = await fetchAll(); live = res;
-    valuation = res.fx ? computeValuation(res.quotes, res.fx.rate, res.at) : null;
+    hist.quotes = hist.quotes || {};
+    for (const [k, q] of Object.entries(res.quotes)) hist.quotes[k] = q;
+    // Ontbreekt een koers deze ronde, dan de laatst ontvangen koers van dát aandeel gebruiken, duidelijk gemarkeerd.
+    const quotes = { ...res.quotes };
+    for (const p of state.positions) { const k = p.ticker.toUpperCase(); if (!quotes[k] && hist.quotes[k]) quotes[k] = { ...hist.quotes[k], cached: true, session: sessionAt(hist.quotes[k].t, p.market) }; }
+    for (const p of state.positions) { const k = p.ticker.toUpperCase(); if (!res.quotes[k] && validSale(p)) res.errors.unshift(k + ': geen nieuwe koers ontvangen' + (quotes[k] ? ', laatst bekende koers van ' + fmtDate(quotes[k].t) + ' ' + fmtTime(quotes[k].t, TZ_BE, false) + ' gebruikt' : '')); }
+    res.quotes = quotes;
+    valuation = res.fx ? computeValuation(quotes, res.fx.rate, res.at) : null;
     cryptoVal = computeCrypto(res.crypto, res.fx && res.fx.rate);
     if (!res.fx) res.errors.unshift('Geen EUR/USD-koers: HOLD kan niet berekend worden.');
     record(manual);
@@ -1017,8 +1036,8 @@ function record(manual) {
   const P = parts(), str = v => (v == null ? null : v.toString());
   const prevParts = hist.last && hist.last.parts;
   const lastParts = {
-    stocks: P.stocks && P.stocks.fresh ? { hold: str(P.stocks.hold) } : prevParts && prevParts.stocks,
-    crypto: P.crypto && P.crypto.fresh ? { hold: str(P.crypto.hold), cash: str(P.crypto.cash) } : prevParts && prevParts.crypto,
+    stocks: P.stocks && P.stocks.fresh ? { hold: str(P.stocks.hold), key: P.stocks.key } : prevParts && prevParts.stocks,
+    crypto: P.crypto && P.crypto.fresh ? { hold: str(P.crypto.hold), cash: str(P.crypto.cash), key: P.crypto.key } : prevParts && prevParts.crypto,
   };
   if (!valuation || !valuation.complete) { if (hist.last) { hist.last.parts = lastParts; saveHist(); } return; }
   const now = valuation.at, lp = hist.points[hist.points.length - 1], lastT = lp ? lp.t : 0, si = saleInfo();
