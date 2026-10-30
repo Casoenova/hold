@@ -61,10 +61,10 @@ input, select, textarea { font: inherit; }
 .down { color: var(--down); }
 .warn { color: var(--warn); }
 
-header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0 10px; }
-.brand { font-weight: 800; font-size: 18px; letter-spacing: -.01em; }
+header.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 14px 0 10px; }
+.brand { font-weight: 800; font-size: 18px; letter-spacing: -.01em; white-space: nowrap; }
 .brand span { color: var(--muted); font-weight: 500; }
-.status { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.status { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 8px; min-width: 0; }
 .status .upd { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
 .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
@@ -176,14 +176,14 @@ ul.errs.soft { color: var(--faint); }
   <section class="card">
     <div class="card-h"><div><h2>Aandelen</h2><div class="small muted">Waarde alsof je nog had · koers · verandering in EUR sinds verkoop</div></div><button class="btn sm" id="btnRefresh" type="button">Vernieuwen</button></div>
     <div id="positions"></div>
-    <ul class="errs" id="errList" hidden></ul>
+    <details id="errBox" class="small" hidden style="margin-top:8px"><summary class="muted">Meldingen van koersbronnen (<span id="errCount">0</span>)</summary><ul class="errs" id="errList"></ul></details>
   </section>
 
   <section class="card">
-    <div class="card-h"><h2>HOLD t.o.v. CASH sinds de verkoop</h2></div>
+    <div class="card-h"><div><h2>Verschil sinds de verkoop</h2><div class="small muted">CASH min HOLD. Boven de lijn: verkopen was beter. Onder: vasthouden was beter.</div></div></div>
     <div class="chart-cap" id="chartCap"></div>
     <div id="chart"></div>
-    <div class="legend"><span><i></i>HOLD</span><span><i class="dash"></i>CASH</span></div>
+    <div class="legend"><span><i></i>Verschil</span><span><i class="dash"></i>CASH = HOLD</span></div>
   </section>
 
   <section class="card">
@@ -203,7 +203,8 @@ ul.errs.soft { color: var(--faint); }
         <li><strong>Verkoop</strong>: koers, wisselkoers, netto-opbrengst en wisselkosten komen rechtstreeks uit je Trading 212-export. Aantal × verkoopkoers ÷ wisselkoers is tot op de cent gelijk aan netto + wisselkosten; dat is gecontroleerd.</li>
         <li><strong>Rekenwijze</strong>: identiek aan Trading 212: aantal × laatste koers (USD) ÷ EUR/USD, per positie afgerond op de cent en opgeteld. Uit je schermafbeeldingen is dit tot op enkele centen bevestigd (Trading 212 toont koersen op 2 decimalen maar rekent met meer).</li>
         <li><strong>Koersen</strong>: Trading 212 gebruikt eigen datafeeds (regulier, pre-market, after-hours en overnight via Blue Ocean). Deze app gebruikt Alpaca (IEX realtime, SIP 15 min vertraagd, afgeleide Blue Ocean overnight-feed) en Finnhub. Dezelfde handel, niet dezelfde feed: een koers kan op elk moment enkele centen verschillen.</li>
-        <li><strong>Wisselkoers</strong>: Trading 212 gebruikt een live interbankkoers. De app gebruikt de live OANDA-middenkoers via Finnhub (of een terugvaloptie, altijd zichtbaar hierboven). Verschil typisch 0,00–0,05%.</li>
+        <li><strong>Wisselkoers</strong>: Trading 212 gebruikt een live interbankkoers. De app gebruikt de live middenkoers van Alpaca, Finnhub of Kraken, en valt alleen terug op een afgeleide of dagkoers als die er niet zijn (altijd zichtbaar hierboven). Verschil typisch 0,00–0,05%.</li>
+        <li><strong>Pre-market (10:00–14:00 Belgische tijd)</strong>: het gratis Alpaca-abonnement heeft dan alleen koersen met 15 minuten vertraging. De app toont dat met de badge "15 min vertraagd". Realtime koersen in die uren vereisen Alpaca Algo Trader Plus (betalend). Vanaf 14:00 komen er realtime IEX-koersen bij.</li>
         <li><strong>Exact €0,00 op elk moment</strong> is alleen mogelijk met de interne koersfeed van Trading 212, en die is niet publiek. Verwacht enkele euro's afwijking op dit bedrag; tientallen euro's wijzen op een verouderde sessiekoers (badge "verouderd"). Meet de werkelijke afwijking met de vergelijking hierboven.</li>
       </ul>
     </div>
@@ -322,8 +323,8 @@ const SESSION_NL = { pre: 'Pre-market', regular: 'Regulier', after: 'After-hours
 const SESSION_CODE = { pre: 'P', regular: 'R', after: 'A', overnight: 'O', closed: 'C' };
 
 /* ========================= Opslag ========================= */
-const LS = { state: 'hvc.state.v2', keys: 'hvc.keys.v1', hist: 'hvc.hist.v2' };
-// Standaardgegevens: de aankopen van 15/10/2026 en de verkopen van 30/10/2026 uit de Trading 212-export.
+const LS = { state: 'hvc.state.v2', keys: 'hvc.keys.v1', hist: 'hvc.hist.v3' };
+// Standaardgegevens: de aankopen van 15/10/2026 en de verkopen van 30/10/2026 uit de Trading 212-export (NBIS 09:00 Belgische tijd).
 const DEFAULT_POSITIONS = [
   { ticker: 'MU', name: 'Micron Technology', qty: '12.28197759', avg: '910.70', avgCcy: 'USD', market: 'us',
     sale: { at: Date.parse('2026-10-30T06:40:37Z'), qty: '12.28197759', price: '903.65', fx: '1.11838974', net: '9908.85', fee: '14.89' } },
@@ -331,7 +332,8 @@ const DEFAULT_POSITIONS = [
     sale: { at: Date.parse('2026-10-30T06:41:07Z'), qty: '75.25531184', price: '140.25', fx: '1.11842059', net: '9422.86', fee: '14.16' } },
   { ticker: 'META', name: 'Meta Platforms', qty: '15.20316735', avg: '735.82', avgCcy: 'USD', market: 'us',
     sale: { at: Date.parse('2026-10-30T06:41:51Z'), qty: '15.20316735', price: '617.50', fx: '1.11839000', net: '8381.58', fee: '12.59' } },
-  { ticker: 'NBIS', name: 'Nebius Group', qty: '63.01501943', avg: '177.51', avgCcy: 'USD', market: 'us', sale: null },
+  { ticker: 'NBIS', name: 'Nebius Group', qty: '63.01501943', avg: '177.51', avgCcy: 'USD', market: 'us',
+    sale: { at: Date.parse('2026-10-30T08:00:00Z'), qty: '63.01501943', price: '160.59', fx: '1.11906998', net: '9029.29', fee: '13.56' } },
   { ticker: 'SFTBY', name: 'SoftBank Group (ADR)', qty: '384.23001457', avg: '15.98', avgCcy: 'USD', market: 'otc', sale: null },
 ];
 let state = { positions: DEFAULT_POSITIONS.map(p => ({ ...p, sale: p.sale ? { ...p.sale } : null })), checks: [], settings: { refreshSec: 60 } };
@@ -340,12 +342,16 @@ let keys = { alpacaKey: '', alpacaSecret: '', finnhubKey: '' };
 let live = null;           // { at, quotes: {SYM: {p, t, src, feed, session}}, fx: {rate, t, src, quality}, errors: [] }
 let valuation = null;      // laatste berekening
 let refreshing = false, timer = null, csvPreview = null;
+const blocked = new Set();   // bronnen die 403 gaven: niet opnieuw proberen tijdens dit bezoek
 
 function lsGet(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
 function load() {
   const s = lsGet(LS.state);
   if (s && typeof s === 'object') state = { ...state, ...s, positions: Array.isArray(s.positions) && s.positions.length ? s.positions : state.positions, settings: { ...state.settings, ...(s.settings || {}) } };
+  // NBIS-verkoop van 30/10 aanvullen als die nog ontbreekt (eerdere versie)
+  const nb = state.positions.find(p => p.ticker === 'NBIS'), def = DEFAULT_POSITIONS.find(p => p.ticker === 'NBIS');
+  if (nb && !nb.sale && def && def.sale && nb.qty === def.qty) nb.sale = { ...def.sale };
   const h = lsGet(LS.hist); if (h && Array.isArray(h.points)) hist = h;
   const k = lsGet(LS.keys); if (k) keys = { ...keys, ...k };
 }
@@ -360,7 +366,7 @@ async function getJson(url, headers = {}) {
   let r;
   try { r = await fetch(url, { headers, cache: 'no-store' }); }
   catch (e) { throw new Error('netwerkfout (geen verbinding of CORS geblokkeerd)'); }
-  if (!r.ok) { let t = ''; try { t = (await r.text()).slice(0, 140); } catch (e) {} throw new Error('HTTP ' + r.status + (t ? ' · ' + t : '')); }
+  if (!r.ok) { let t = ''; try { t = (await r.text()).slice(0, 140); } catch (e) {} const err = new Error('HTTP ' + r.status + (t ? ' · ' + t : '')); err.status = r.status; throw err; }
   return r.json();
 }
 const alpacaHeaders = () => ({ 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret });
@@ -386,36 +392,61 @@ async function finnhubQuote(symbol) {
   if (!j || !(j.c > 0)) throw new Error('geen koers voor ' + symbol);
   return { p: j.c, t: (j.t || 0) * 1000 };
 }
+// Een bron die structureel weigert (4xx behalve 429, of geblokkeerd door de browser) wordt één keer gemeld en daarna overgeslagen.
+async function guarded(key, fn, errors, label, blockOnNetwork) {
+  if (blocked.has(key)) return null;
+  try { return await fn(); }
+  catch (e) {
+    const permanent = (e.status >= 400 && e.status < 500 && e.status !== 429) || (blockOnNetwork && !e.status);
+    if (permanent) blocked.add(key);
+    errors.push(label + ': ' + (e.status === 403 ? 'niet beschikbaar in je gratis abonnement' : e.message));
+    return null;
+  }
+}
 function addCand(c, sym, q) { if (q && q.p > 0 && q.t > 0) (c[sym] = c[sym] || []).push(q); }
 function best(list) { return (list || []).slice().sort((a, b) => b.t - a.t)[0] || null; }
 
 async function fetchFx(errors) {
-  if (hasFinnhub()) {
-    try { const q = await finnhubQuote('OANDA:EUR_USD'); return { rate: q.p, t: q.t, src: 'Finnhub · OANDA EUR/USD', quality: 'live' }; }
-    catch (e) { errors.push('Finnhub EUR/USD: ' + e.message); }
-  }
+  const cands = [];
   if (hasAlpaca()) {
-    try {
-      const probe = (state.positions.find(p => p.market !== 'otc') || {}).ticker || 'META';
-      const [usd, eur] = await Promise.all([alpacaSnapshots([probe], 'iex'), alpacaSnapshots([probe], 'iex', 'EUR')]);
-      const a = usd[probe] && usd[probe].latestTrade, b = eur[probe] && eur[probe].latestTrade;
-      if (a && b && a.p > 0 && b.p > 0 && a.t === b.t) {
-        const rate = Number(ddiv(numToDec(a.p), numToDec(b.p))) / 1e12;
-        return { rate, t: Date.parse(a.t), src: 'Alpaca · afgeleid uit EUR-notering van ' + probe, quality: 'derived' };
-      }
-      errors.push('Alpaca EUR/USD: EUR- en USD-koers niet van dezelfde handel');
-    } catch (e) { errors.push('Alpaca EUR/USD: ' + e.message); }
+    // Alpaca forex: live middenkoers met tijdstempel
+    for (const pair of ['EURUSD', 'USDEUR']) {
+      const j = await guarded('alpaca-fx-' + pair, () => getJson('https://data.alpaca.markets/v1beta1/forex/latest/rates?currency_pairs=' + pair, alpacaHeaders()), errors, 'Alpaca wisselkoers ' + pair);
+      const r = j && j.rates && j.rates[pair];
+      if (r && r.mp > 0) { cands.push({ rate: pair === 'EURUSD' ? r.mp : 1 / r.mp, t: Date.parse(r.t), src: 'Alpaca forex · middenkoers ' + pair, quality: 'live' }); break; }
+    }
+  }
+  if (hasFinnhub()) {
+    const q = await guarded('finnhub-fx', () => finnhubQuote('OANDA:EUR_USD'), errors, 'Finnhub EUR/USD');
+    if (q) cands.push({ rate: q.p, t: q.t, src: 'Finnhub · OANDA EUR/USD', quality: 'live' });
+  }
+  const k = await guarded('kraken-fx', () => getJson('https://api.kraken.com/0/public/Ticker?pair=EURUSD'), errors, 'Kraken EUR/USD', true);
+  const kr = k && k.result && Object.values(k.result)[0];
+  if (kr && kr.b && kr.a) { const mid = (Number(kr.b[0]) + Number(kr.a[0])) / 2; if (mid > 0) cands.push({ rate: mid, t: Date.now(), src: 'Kraken EUR/USD · middenkoers bied/laat', quality: 'live' }); }
+  const live = cands.filter(c => c.quality === 'live' && Date.now() - c.t < 30 * 60e3).sort((a, b) => b.t - a.t);
+  if (live.length) return live[0];
+  if (hasAlpaca()) {
+    // afgeleid uit een EUR-notering van een aandeel; zo recent als de laatste handel
+    const probe = (state.positions.find(p => p.market !== 'otc') || {}).ticker || 'META';
+    for (const feed of ['delayed_sip', 'overnight', 'iex']) {
+      try {
+        const [usd, eur] = await Promise.all([alpacaSnapshots([probe], feed), alpacaSnapshots([probe], feed, 'EUR')]);
+        const a = usd[probe] && usd[probe].latestTrade, b = eur[probe] && eur[probe].latestTrade;
+        if (a && b && a.p > 0 && b.p > 0 && a.t === b.t) cands.push({ rate: Number(ddiv(numToDec(a.p), numToDec(b.p))) / 1e12, t: Date.parse(a.t), src: 'Alpaca · afgeleid uit EUR-notering van ' + probe + ' (' + feed + ')', quality: 'derived' });
+      } catch (e) {}
+    }
   }
   try {
     const j = await getJson('https://api.coinbase.com/v2/exchange-rates?currency=EUR');
     const r = j && j.data && j.data.rates && Number(j.data.rates.USD);
-    if (r > 0) return { rate: r, t: Date.now(), src: 'Coinbase referentiekoers (geen tijdstempel)', quality: 'reference' };
-  } catch (e) { errors.push('Coinbase EUR/USD: ' + e.message); }
+    if (r > 0) cands.push({ rate: r, t: Date.now() - 60 * 60e3, src: 'Coinbase referentiekoers (tot 1 uur oud)', quality: 'reference' });
+  } catch (e) {}
+  if (cands.length) return cands.sort((a, b) => b.t - a.t)[0];
   try {
     const j = await getJson('https://api.frankfurter.app/latest?from=EUR&to=USD');
     const r = j && j.rates && Number(j.rates.USD);
     if (r > 0) return { rate: r, t: Date.parse(j.date + 'T14:15:00Z'), src: 'ECB-referentiekoers ' + j.date + ' (dagkoers, niet live)', quality: 'daily' };
-  } catch (e) { errors.push('ECB EUR/USD: ' + e.message); }
+  } catch (e) {}
   return null;
 }
 
@@ -431,9 +462,9 @@ async function fetchAll() {
         for (const s of usSyms) { const lt = map && map[s] && map[s].latestTrade; if (lt) addCand(cands, s, { p: lt.p, t: Date.parse(lt.t), src: 'Alpaca', feed }); }
       }).catch(e => errors.push('Alpaca (' + feed + '): ' + e.message)));
     }
-    if (otcSyms.length) tasks.push(alpacaLatestTrades(otcSyms, 'otc').then(map => {
-      for (const s of otcSyms) { const lt = map[s]; if (lt) addCand(cands, s, { p: lt.p, t: Date.parse(lt.t), src: 'Alpaca', feed: 'otc' }); }
-    }).catch(e => errors.push('Alpaca (otc): ' + e.message)));
+    if (otcSyms.length) tasks.push(guarded('alpaca-otc', () => alpacaLatestTrades(otcSyms, 'otc'), errors, 'Alpaca OTC').then(map => {
+      for (const s of otcSyms) { const lt = map && map[s]; if (lt) addCand(cands, s, { p: lt.p, t: Date.parse(lt.t), src: 'Alpaca', feed: 'otc' }); }
+    }));
   }
   if (hasFinnhub()) {
     for (const s of syms) tasks.push(finnhubQuote(s).then(q => addCand(cands, s, { ...q, src: 'Finnhub', feed: 'quote' })).catch(e => errors.push('Finnhub (' + s + '): ' + e.message)));
@@ -444,7 +475,7 @@ async function fetchAll() {
   const quotes = {};
   for (const p of state.positions) {
     const s = p.ticker.toUpperCase(), b = best(cands[s]);
-    if (b) quotes[s] = { ...b, session: sessionAt(b.t, p.market) };
+    if (b) quotes[s] = { ...b, session: sessionAt(b.t, p.market), delayed: b.feed === 'delayed_sip' };
   }
   return { at: Date.now(), quotes, fx, errors };
 }
@@ -483,7 +514,9 @@ function computeValuation(quotes, fxRate, at) {
   }
   return { at, rows, totalCents: total, complete, fx };
 }
-function isStale(q, market, now) { return sessionAt(now, market) !== 'closed' && (now - q.t) > 15 * 60e3; }
+// Vertraagde SIP-koersen zijn per definitie ~15 min oud; pas na 35 min heten ze verouderd. Andere feeds na 15 min.
+function isStale(q, market, now) { return sessionAt(now, market) !== 'closed' && (now - q.t) > (q.feed === 'delayed_sip' ? 35 : 15) * 60e3; }
+function isDelayed(q, market, now) { return q.feed === 'delayed_sip' && sessionAt(now, market) !== 'closed' && !isStale(q, market, now); }
 
 /* ========================= Weergave ========================= */
 const $ = id => document.getElementById(id);
@@ -507,9 +540,11 @@ function renderHeader() {
   const src = live || (hist.last ? { at: hist.last.at, quotes: hist.last.quotes || {} } : null);
   if (!src || !Object.keys(src.quotes).length) { pill.className = 'pill off'; pill.textContent = 'Geen koersen'; upd.textContent = ''; return; }
   const now = Date.now(), usSession = sessionAt(now, 'us');
-  const anyStale = state.positions.some(p => { const q = src.quotes[p.ticker.toUpperCase()]; return q && validSale(p) && isStale(q, p.market, now); });
-  pill.textContent = SESSION_NL[usSession] + (live ? '' : ' · laatst bekend');
-  pill.className = 'pill ' + (anyStale ? 'stale' : usSession === 'regular' ? 'live' : usSession === 'closed' ? 'off' : 'ext');
+  const sold = state.positions.filter(p => validSale(p));
+  const anyStale = sold.some(p => { const q = src.quotes[p.ticker.toUpperCase()]; return q && isStale(q, p.market, now); });
+  const anyDelayed = sold.some(p => { const q = src.quotes[p.ticker.toUpperCase()]; return q && isDelayed(q, p.market, now); });
+  pill.textContent = SESSION_NL[usSession] + (!live ? ' · laatst bekend' : anyStale ? ' · verouderd' : anyDelayed ? ' · 15 min vertraagd' : '');
+  pill.className = 'pill ' + (anyStale || anyDelayed ? 'stale' : usSession === 'regular' ? 'live' : usSession === 'closed' ? 'off' : 'ext');
   upd.textContent = 'Bijgewerkt ' + fmtTime(src.at);
 }
 function renderTiles() {
@@ -552,6 +587,7 @@ function renderPositions() {
       valHtml = fmtCents(r.cents);
       priceHtml = '$' + fmtDec(r.price, decimalsOf(r.q.p));
       if (r.stale) badge = '<span class="badge stale">verouderd</span>';
+      else if (isDelayed(r.q, p.market, Date.now())) badge = '<span class="badge stale">15 min vertraagd</span>';
       else if (r.q.session && r.q.session !== 'regular' && r.q.session !== 'closed') badge = '<span class="badge ext">' + SESSION_NL[r.q.session] + '</span>';
       else if (r.q.session === 'closed') badge = '<span class="badge">slotkoers</span>';
       if (sale) { const chg = ddiv(r.eurPerShare - sale.eurPerShare, sale.eurPerShare); chgHtml = '<span class="' + (chg < 0n ? 'down' : 'up') + '">' + fmtPct(chg) + '</span>'; }
@@ -566,40 +602,58 @@ function renderPositions() {
       '<div><div class="val num">' + valHtml + '</div><div class="chg num">' + (priceHtml ? '<span class="muted">' + priceHtml + '</span>' : '') + (chgHtml ? ' · ' + chgHtml : '') + '</div></div>' +
       '</div>';
   }).join('');
-  const errs = (live && live.errors) || [];
-  const ul = $('errList'); ul.hidden = !errs.length; ul.className = 'errs' + (valuation && valuation.complete ? ' soft' : ''); ul.innerHTML = errs.map(e => '<li>' + esc(e) + '</li>').join('');
+  const errs = [...new Set((live && live.errors) || [])];
+  const box = $('errBox'); box.hidden = !errs.length; $('errCount').textContent = errs.length;
+  const ul = $('errList'); ul.className = 'errs' + (valuation && valuation.complete ? ' soft' : ''); ul.innerHTML = errs.map(e => '<li>' + esc(e) + '</li>').join('');
+  if (valuation && !valuation.complete) box.open = true;
 }
 function decimalsOf(x) { const s = String(x); const i = s.indexOf('.'); const d = i < 0 ? 0 : s.length - i - 1; return Math.min(4, Math.max(2, d)); }
 
 /* ---- grafiek ---- */
+// Verschil op tijdstip t: voor elk aandeel dat op t al verkocht was, netto-opbrengst min waarde op t.
+function diffAt(t, values) {
+  let d = 0n, n = 0;
+  for (const p of state.positions) {
+    const v = validSale(p); if (!v || v.at > t) continue;
+    const c = values[p.ticker.toUpperCase()]; if (c == null) return null;
+    d += toCents(v.net) - BigInt(c); n++;
+  }
+  return n ? d : null;
+}
+function chartSeries() {
+  const si = saleInfo(); if (!si) return [];
+  const pts = [];
+  // beginpunt: eerste verkoopmoment, waarde = verkoopwaarde (verschil = de wisselkosten)
+  const first = {}; for (const { p, v } of si.sold) if (v.at <= si.t0 + 10 * 60e3) first[p.ticker.toUpperCase()] = Number(v.grossCents);
+  const d0 = diffAt(si.t0 + 10 * 60e3, first); if (d0 != null) pts.push([si.t0, Number(d0)]);
+  for (const h of hist.points) { if (!h || !h.v) continue; const d = diffAt(h.t, h.v); if (d != null && h.t > si.t0) pts.push([h.t, Number(d)]); }
+  if (valuation && valuation.complete) { const v = {}; for (const r of valuation.rows) if (r.q) v[r.pos.ticker.toUpperCase()] = Number(r.cents); const d = diffAt(valuation.at, v); if (d != null && valuation.at > si.t0) pts.push([valuation.at, Number(d)]); }
+  return pts.sort((a, b) => a[0] - b[0]);
+}
 function renderChart() {
-  const el = $('chart'), cap = $('chartCap'); const si = saleInfo();
-  if (!si) { cap.textContent = ''; el.innerHTML = '<p class="small muted" style="margin:4px 0">Verschijnt zodra er verkoopgegevens zijn.</p>'; return; }
-  const pts = [[si.tLast, Number(si.grossCents)]];
-  for (const p of hist.points) if (p[0] > si.tLast) pts.push([p[0], p[1]]);
-  if (valuation && valuation.complete && valuation.at > si.tLast) pts.push([valuation.at, Number(valuation.totalCents)]);
-  const cash = Number(si.cashCents);
+  const el = $('chart'), cap = $('chartCap');
+  const pts = chartSeries();
+  if (!pts.length) { cap.textContent = ''; el.innerHTML = '<p class="small muted" style="margin:4px 0">Verschijnt zodra er verkoopgegevens en koersen zijn.</p>'; return; }
   const W = Math.max(320, Math.round(el.clientWidth || 400)), H = 200, mL = 54, mR = 12, mT = 14, mB = 26;
   const t0 = pts[0][0], t1 = Math.max(pts[pts.length - 1][0], t0 + 3600e3);
-  let lo = Math.min(cash, ...pts.map(p => p[1])), hi = Math.max(cash, ...pts.map(p => p[1]));
-  if (hi - lo < 100) { lo -= 5000; hi += 5000; }
+  let lo = Math.min(0, ...pts.map(p => p[1])), hi = Math.max(0, ...pts.map(p => p[1]));
+  if (hi - lo < 2000) { const m = (hi + lo) / 2; lo = m - 1000; hi = m + 1000; }
   const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
   const X = t => mL + (t - t0) / (t1 - t0) * (W - mL - mR);
   const Y = v => mT + (hi - v) / (hi - lo) * (H - mT - mB);
   let g = '';
   for (const v of niceTicks(lo, hi, 4)) g += '<line x1="' + mL + '" x2="' + (W - mR) + '" y1="' + Y(v).toFixed(1) + '" y2="' + Y(v).toFixed(1) + '" stroke="var(--line)" stroke-width="1"/>' +
-    '<text x="' + (mL - 6) + '" y="' + (Y(v) + 4).toFixed(1) + '" text-anchor="end" font-size="11" fill="var(--muted)">' + esc(compactEur(v)) + '</text>';
+    '<text x="' + (mL - 6) + '" y="' + (Y(v) + 4).toFixed(1) + '" text-anchor="end" font-size="11" fill="var(--muted)">' + esc(axisEur(v)) + '</text>';
   const span = t1 - t0, nx = 4;
   for (let i = 0; i <= nx; i++) { const t = t0 + span * i / nx; g += '<text x="' + X(t).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="' + (i === 0 ? 'start' : i === nx ? 'end' : 'middle') + '" font-size="11" fill="var(--muted)">' + (span > 2 * 86400e3 ? fmtDate(t) : fmtTime(t, TZ_BE, false)) + '</text>'; }
   const path = pts.map((p, i) => (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join(' ');
-  const area = path + ' L' + X(pts[pts.length - 1][0]).toFixed(1) + ' ' + Y(lo).toFixed(1) + ' L' + X(t0).toFixed(1) + ' ' + Y(lo).toFixed(1) + ' Z';
-  const last = pts[pts.length - 1];
-  el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="HOLD en CASH sinds de verkoop">' + g +
-    '<line x1="' + mL + '" x2="' + (W - mR) + '" y1="' + Y(cash).toFixed(1) + '" y2="' + Y(cash).toFixed(1) + '" stroke="var(--muted)" stroke-width="2" stroke-dasharray="5 5"/>' +
-    '<text x="' + (W - mR) + '" y="' + (Y(cash) - 5).toFixed(1) + '" text-anchor="end" font-size="11" fill="var(--muted)">CASH ' + esc(fmtCents(si.cashCents)) + '</text>' +
-    '<path d="' + area + '" fill="var(--accent)" fill-opacity="0.1"/>' +
-    '<path d="' + path + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
-    '<circle cx="' + X(last[0]).toFixed(1) + '" cy="' + Y(last[1]).toFixed(1) + '" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>' +
+  const last = pts[pts.length - 1], col = last[1] > 0 ? 'var(--up)' : last[1] < 0 ? 'var(--down)' : 'var(--accent)';
+  const area = path + ' L' + X(last[0]).toFixed(1) + ' ' + Y(0).toFixed(1) + ' L' + X(t0).toFixed(1) + ' ' + Y(0).toFixed(1) + ' Z';
+  el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Verschil tussen cash en hold sinds de verkoop">' + g +
+    '<path d="' + area + '" fill="' + col + '" fill-opacity="0.1"/>' +
+    '<line x1="' + mL + '" x2="' + (W - mR) + '" y1="' + Y(0).toFixed(1) + '" y2="' + Y(0).toFixed(1) + '" stroke="var(--muted)" stroke-width="2" stroke-dasharray="5 5"/>' +
+    '<path d="' + path + '" fill="none" stroke="' + col + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<circle cx="' + X(last[0]).toFixed(1) + '" cy="' + Y(last[1]).toFixed(1) + '" r="5" fill="' + col + '" stroke="var(--surface)" stroke-width="2"/>' +
     '<g id="cursor" hidden><line id="curL" y1="' + mT + '" y2="' + (H - mB) + '" stroke="var(--fg)" stroke-opacity=".5" stroke-width="1"/><circle id="curC" r="5" fill="var(--fg)" stroke="var(--surface)" stroke-width="2"/></g></svg>';
   const idle = pts.length < 3 ? 'De lijn vult zich elke 5 minuten terwijl de app open is.' : 'Aanraken of bewegen voor details · ' + pts.length + ' meetpunten';
   cap.textContent = idle;
@@ -610,17 +664,17 @@ function renderChart() {
     const p = pts[bi]; const cur = svgEl.querySelector('#cursor'); cur.removeAttribute('hidden');
     cur.querySelector('#curL').setAttribute('x1', X(p[0])); cur.querySelector('#curL').setAttribute('x2', X(p[0]));
     cur.querySelector('#curC').setAttribute('cx', X(p[0])); cur.querySelector('#curC').setAttribute('cy', Y(p[1]));
-    cap.textContent = fmtDate(p[0]) + ' ' + fmtTime(p[0], TZ_BE, false) + ' · HOLD ' + fmtCents(BigInt(Math.round(p[1]))) + ' · verschil ' + fmtCents(BigInt(Math.round(cash - p[1])), { sign: true });
+    cap.textContent = fmtDate(p[0]) + ' ' + fmtTime(p[0], TZ_BE, false) + ' · verschil ' + fmtCents(BigInt(Math.round(p[1])), { sign: true });
   };
   svgEl.addEventListener('pointermove', move); svgEl.addEventListener('pointerdown', move);
   svgEl.addEventListener('pointerleave', () => { svgEl.querySelector('#cursor').setAttribute('hidden', ''); cap.textContent = idle; });
 }
+function axisEur(cents) { const e = Math.round(cents / 100); return (e > 0 ? '+' : e < 0 ? '−' : '') + '€' + group(Math.abs(e).toString()); }
 function niceTicks(lo, hi, n) {
   const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
   const step = (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p;
   const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) out.push(v); return out;
 }
-function compactEur(cents) { return '€' + group(Math.round(cents / 100).toString()); }
 
 /* ---- controle ---- */
 function renderControl() {
@@ -630,10 +684,10 @@ function renderControl() {
   else {
     tbl.innerHTML = '<tr><th>Aandeel</th><th class="r">Koers</th><th class="r">Tijd (BE / ET)</th><th>Sessie</th><th>Bron</th></tr>' + state.positions.map(p => {
       const s = p.ticker.toUpperCase(), q = src.quotes[s]; if (!q) return '<tr><td>' + esc(s) + '</td><td colspan="4" class="warn">geen koers ontvangen</td></tr>';
-      return '<tr><td>' + esc(s) + '</td><td class="r num">$' + fmtDec(numToDec(q.p), decimalsOf(q.p)) + '</td><td class="r mono">' + fmtTime(q.t) + ' / ' + fmtTime(q.t, TZ_ET) + '</td><td>' + SESSION_NL[q.session || sessionAt(q.t, p.market)] + (isStale(q, p.market, Date.now()) ? ' <span class="badge stale">verouderd</span>' : '') + '</td><td>' + esc(q.src + (q.feed ? ' · ' + q.feed : '')) + '</td></tr>';
+      return '<tr><td>' + esc(s) + '</td><td class="r num">$' + fmtDec(numToDec(q.p), decimalsOf(q.p)) + '</td><td class="r mono">' + fmtTime(q.t) + ' / ' + fmtTime(q.t, TZ_ET) + '</td><td>' + SESSION_NL[q.session || sessionAt(q.t, p.market)] + (isStale(q, p.market, Date.now()) ? ' <span class="badge stale">verouderd</span>' : isDelayed(q, p.market, Date.now()) ? ' <span class="badge stale">15 min vertraagd</span>' : '') + '</td><td>' + esc(q.src + (q.feed ? ' · ' + q.feed : '')) + '</td></tr>';
     }).join('');
     const fx = src.fx;
-    fxEl.innerHTML = fx ? '<dt>EUR/USD</dt><dd class="num">' + fmtDec(numToDec(fx.rate), 5) + ' <span class="muted">(1 USD = €' + fmtDec(ddiv(SCALE, numToDec(fx.rate)), 5) + ')</span></dd><dt>Bron</dt><dd>' + esc(fx.src) + (fx.quality === 'live' ? '' : ' <span class="badge stale">' + (fx.quality === 'daily' ? 'dagkoers' : 'niet-live') + '</span>') + '</dd><dt>Tijd</dt><dd class="mono">' + fmtTime(fx.t) + '</dd>'
+    fxEl.innerHTML = fx ? '<dt>EUR/USD</dt><dd class="num">' + fmtDec(numToDec(fx.rate), 5) + ' <span class="muted">(1 USD = €' + fmtDec(ddiv(SCALE, numToDec(fx.rate)), 5) + ')</span></dd><dt>Bron</dt><dd>' + esc(fx.src) + (fx.quality === 'live' ? '' : ' <span class="badge stale">' + (fx.quality === 'daily' ? 'dagkoers' : fx.quality === 'derived' ? 'afgeleid, zo oud als de handel' : 'niet-live') + '</span>') + '</dd><dt>Tijd</dt><dd class="mono">' + fmtTime(fx.t) + '</dd>'
       : '<dt>EUR/USD</dt><dd class="warn">geen wisselkoers ontvangen</dd>';
   }
   if (!$('checkForm').children.length) {
@@ -742,7 +796,14 @@ function renderSettings() {
   $('refreshSec').value = state.settings.refreshSec || 60;
   renderPosEditor(); renderBackup();
 }
-function toLocalInput(ms) { const d = new Date(ms); const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+// Invoervelden voor tijd gebruiken altijd Belgische tijd, los van de tijdzone van het toestel.
+function beOffset(ms) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: TZ_BE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).formatToParts(new Date(ms));
+  const g = t => Number((parts.find(p => p.type === t) || {}).value);
+  return Date.UTC(g('year'), g('month') - 1, g('day'), g('hour') % 24, g('minute'), g('second')) - Math.floor(ms / 1000) * 1000;
+}
+function toLocalInput(ms) { const d = new Date(ms + beOffset(ms)); const p = n => String(n).padStart(2, '0'); return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) + 'T' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds()); }
+function fromLocalInput(str) { const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(str || ''); if (!m) return NaN; const naive = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)); let t = naive - beOffset(naive); t = naive - beOffset(t); return t; }
 function inp(f, ph, v, extra) { return '<input data-f="' + f + '" placeholder="' + esc(ph) + '" value="' + esc(v == null ? '' : v) + '" ' + (extra || 'inputmode="decimal"') + '>'; }
 function renderPosEditor() {
   $('posEditor').innerHTML = state.positions.map((p, i) => { const s = p.sale || {}; return '<div class="pos-edit" data-i="' + i + '"><div class="g">' +
@@ -750,7 +811,7 @@ function renderPosEditor() {
     inp('qty', 'Aantal (8 decimalen)', p.qty) + inp('avg', 'Gem. aankoopprijs', p.avg) +
     '<select data-f="avgCcy"><option value="USD"' + (p.avgCcy !== 'EUR' ? ' selected' : '') + '>Aankoopprijs in USD</option><option value="EUR"' + (p.avgCcy === 'EUR' ? ' selected' : '') + '>Aankoopprijs in EUR</option></select>' +
     '<select data-f="market"><option value="us"' + (p.market !== 'otc' ? ' selected' : '') + '>NYSE / Nasdaq (24/5)</option><option value="otc"' + (p.market === 'otc' ? ' selected' : '') + '>OTC (alleen reguliere uren)</option></select>' +
-    '</div><div class="g sale"><div class="lbl">VERKOOP (leeg = nog in bezit)</div>' +
+    '</div><div class="g sale"><div class="lbl">VERKOOP (leeg = nog in bezit) · tijd in Belgische tijd</div>' +
     '<input data-f="s_at" type="datetime-local" step="1" class="full" value="' + (s.at ? toLocalInput(s.at) : '') + '">' +
     inp('s_qty', 'Verkocht aantal', s.qty) + inp('s_price', 'Verkoopkoers (USD)', s.price) +
     inp('s_fx', 'EUR/USD bij verkoop', s.fx) + inp('s_net', 'Netto-opbrengst (EUR)', s.net) +
@@ -767,7 +828,7 @@ function readPosEditor() {
     const avg = parseNum(g('avg'));
     let sale = null;
     if (g('s_at') || g('s_price') || g('s_net')) {
-      const at = Date.parse(g('s_at')); const price = parseNum(g('s_price')), fx = parseNum(g('s_fx')), net = parseNum(g('s_net'));
+      const at = fromLocalInput(g('s_at')); const price = parseNum(g('s_price')), fx = parseNum(g('s_fx')), net = parseNum(g('s_net'));
       if (!isFinite(at) || !price || !fx || net == null) { toast(ticker + ': verkoop vereist tijdstip, koers, wisselkoers en netto-opbrengst.'); return null; }
       const sq = parseNum(g('s_qty')) || qty; if (sq > qty) { toast(ticker + ': verkocht aantal groter dan aantal.'); return null; }
       sale = { at, qty: decToStr(sq), price: decToStr(price), fx: decToStr(fx), net: decToStr(net), fee: decToStr(parseNum(g('s_fee')) || 0n) };
@@ -794,10 +855,11 @@ async function refresh(manual) {
 }
 function record(manual) {
   if (!valuation || !valuation.complete) return;
-  const now = valuation.at, lastT = hist.points.length ? hist.points[hist.points.length - 1][0] : 0, si = saleInfo();
+  const now = valuation.at, lp = hist.points[hist.points.length - 1], lastT = lp ? lp.t : 0, si = saleInfo();
   hist.last = { at: now, holdCents: Number(valuation.totalCents), fx: live.fx, quotes: live.quotes };
-  if (si && now > si.tLast && (now - lastT >= 5 * 60e3 || (manual && now - lastT >= 30e3))) {
-    hist.points.push([now, Number(valuation.totalCents), SESSION_CODE[sessionAt(now, 'us')]]);
+  if (si && now > si.t0 && (now - lastT >= 5 * 60e3 || (manual && now - lastT >= 30e3))) {
+    const v = {}; for (const r of valuation.rows) if (r.q) v[r.pos.ticker.toUpperCase()] = Number(r.cents);
+    hist.points.push({ t: now, v, s: SESSION_CODE[sessionAt(now, 'us')] });
     if (hist.points.length > 5000) hist.points = hist.points.slice(0, -2500).filter((_, i) => i % 2 === 0).concat(hist.points.slice(-2500));
   }
   saveHist();
