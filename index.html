@@ -98,6 +98,10 @@ header.top { display: flex; flex-wrap: wrap; align-items: center; justify-conten
 .pos-row .meta { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
 .pos-row .val { text-align: right; font-weight: 800; font-size: 16px; white-space: nowrap; }
 .pos-row .chg { text-align: right; font-size: 12.5px; white-space: nowrap; }
+.manual-in { grid-column: 1 / -1; margin-top: 6px; padding: 10px; border-radius: 12px; background: var(--warn-soft); font-size: 12.5px; display: flex; flex-direction: column; gap: 6px; }
+.manual-in label { color: var(--warn); font-weight: 700; }
+.manual-in .row { flex-wrap: nowrap; }
+.manual-in input { flex: 1; min-width: 0; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 16px; }
 .pos-row.unsold .val { color: var(--muted); font-weight: 600; }
 .badge { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); color: var(--muted); vertical-align: middle; margin-left: 4px; }
 .badge.stale { background: var(--warn-soft); color: var(--warn); }
@@ -373,7 +377,7 @@ let keys = { alpacaKey: '', alpacaSecret: '', finnhubKey: '' };
 let live = null;           // { at, quotes: {SYM: {p, t, src, feed, session}}, fx: {rate, t, src, quality}, errors: [] }
 let valuation = null;      // laatste berekening aandelen
 let cryptoVal = null;      // laatste berekening crypto
-let refreshing = false, timer = null, csvPreview = null;
+let refreshing = false, timer = null, csvPreview = null, manualOut = {}, manualDrafts = {}, manualFocus = null;
 const blocked = new Set();   // bronnen die 403 gaven: niet opnieuw proberen tijdens dit bezoek
 
 function lsGet(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
@@ -386,6 +390,8 @@ function load() {
     const mine = state.positions.find(p => p.ticker === def.ticker);
     if (mine && def.sale && (!mine.sale || (def.sale.orders && !mine.sale.orders && mine.sale.qty !== def.sale.qty)) && parseNum(mine.qty) === parseNum(def.qty)) mine.sale = { ...def.sale };
   }
+  // Handmatige koers SFTBY $13,86 (30/10 12:44 UTC), geldt tot er een nieuwere live koers binnenkomt.
+  if (!state.manualSeed1) { state.manual = state.manual || {}; if (!state.manual.SFTBY) state.manual.SFTBY = { p: '13.86', t: Date.parse('2026-10-30T12:44:00Z') }; state.manualSeed1 = true; }
   if (!Array.isArray(state.crypto)) state.crypto = DEFAULT_CRYPTO.map(c => ({ ...c, sale: { ...c.sale } }));
   const h = lsGet(LS.hist); if (h && Array.isArray(h.points)) hist = h;
   if (!hist.quotes && hist.last && hist.last.quotes) hist.quotes = { ...hist.last.quotes };
@@ -600,7 +606,7 @@ function computeValuation(quotes, fxRate, at) {
   return { at, rows, totalCents: total, complete, fx };
 }
 // Vertraagde SIP-koersen zijn per definitie ~15 min oud; pas na 35 min heten ze verouderd. Andere feeds na 15 min.
-function isStale(q, market, now) { return sessionAt(now, market) !== 'closed' && (now - q.t) > (q.feed === 'delayed_sip' ? 35 : 15) * 60e3; }
+function isStale(q, market, now) { if (q.manual) return false; return sessionAt(now, market) !== 'closed' && (now - q.t) > (q.feed === 'delayed_sip' ? 35 : 15) * 60e3; }
 function isDelayed(q, market, now) { return q.feed === 'delayed_sip' && sessionAt(now, market) !== 'closed' && !isStale(q, market, now); }
 
 /* ========================= Weergave ========================= */
@@ -639,7 +645,7 @@ function parts() {
   const big = v => (v == null ? null : BigInt(v));
   if (si) {
     const key = si.sold.map(x => x.p.ticker.toUpperCase()).sort().join(',');
-    const anyCached = valuation && valuation.rows.some(r => r.sale && r.q && r.q.cached);
+    const anyCached = valuation && valuation.rows.some(r => r.sale && r.q && (r.q.cached || r.q.manual));
     if (valuation && valuation.complete) out.stocks = { hold: valuation.totalCents, cash: si.cashCents, fresh: !anyCached };
     else out.stocks = { hold: L && L.stocks && L.stocks.key === key ? big(L.stocks.hold) : null, cash: si.cashCents, fresh: false };   // nooit een oude HOLD over andere aandelen gebruiken
     out.stocks.key = key;
@@ -712,7 +718,8 @@ function renderPositions() {
     if (r.q) {
       valHtml = fmtCents(r.cents);
       priceHtml = '$' + fmtDec(r.price, decimalsOf(r.q.p));
-      if (r.q.cached) badge = '<span class="badge stale">laatst bekend ' + fmtTime(r.q.t, TZ_BE, false) + '</span>';
+      if (r.q.manual) badge = '<span class="badge stale">handmatig</span>';
+      else if (r.q.cached) badge = '<span class="badge stale">laatst bekend ' + fmtTime(r.q.t, TZ_BE, false) + '</span>';
       else if (r.stale) badge = '<span class="badge stale">verouderd</span>';
       else if (isDelayed(r.q, p.market, Date.now())) badge = '<span class="badge stale">15 min vertraagd</span>';
       else if (r.q.session && r.q.session !== 'regular' && r.q.session !== 'closed') badge = '<span class="badge ext">' + SESSION_NL[r.q.session] + '</span>';
@@ -728,8 +735,10 @@ function renderPositions() {
       '<div class="meta num">' + fmtDec(parseNum(p.qty) || 0n, 8) + ' st. · gem. ' + (p.avgCcy === 'EUR' ? '€' : '$') + (avg ? fmtDec(avg, 2) : '—') + '</div>' +
       '<div class="meta num">' + meta2 + '</div></div>' +
       '<div><div class="val num">' + valHtml + '</div><div class="chg num">' + (priceHtml ? '<span class="muted">' + priceHtml + '</span>' : '') + (chgHtml ? ' · ' + chgHtml : '') + '</div></div>' +
-      '</div>';
+      manualHtml(s, sale, r) + '</div>';
   }).join('');
+  for (const [k, v] of Object.entries(manualDrafts)) { const i = $('man_' + k); if (i) i.value = v; }
+  if (manualFocus && $('man_' + manualFocus)) $('man_' + manualFocus).focus();
   const errs = [...new Set((live && live.errors) || [])];
   const box = $('errBox'); box.hidden = !errs.length; $('errCount').textContent = errs.length;
   const ul = $('errList'); ul.className = 'errs' + (valuation && valuation.complete ? ' soft' : ''); ul.innerHTML = errs.map(e => '<li>' + esc(e) + '</li>').join('');
@@ -752,6 +761,19 @@ function renderCrypto() {
       '<div class="meta num">' + meta2 + '</div></div>' +
       '<div><div class="val num">' + val + '</div><div class="chg num">' + (price ? '<span class="muted">' + price + '</span>' : '') + (chg ? ' · ' + chg : '') + '</div></div></div>';
   }).join('');
+}
+// Invulveld bij een verkocht aandeel zonder live koers (of met een handmatige/oude koers).
+function manualHtml(s, sale, r) {
+  if (!sale || !valuation) return '';
+  const m = (state.manual || {})[s];
+  const need = !r.q || r.q.manual || r.q.cached || r.stale;
+  if (!need) return '';
+  return '<div class="manual-in">' +
+    '<label for="man_' + esc(s) + '">' + (r.q && r.q.manual ? 'Handmatige koers' : 'Geen live koers. Vul de koers uit Trading 212 in') + ' (USD)</label>' +
+    '<div class="row"><input id="man_' + esc(s) + '" data-mk="' + esc(s) + '" inputmode="decimal" placeholder="bv. 13,86" value="' + esc(m ? String(m.p).replace('.', ',') : '') + '">' +
+    '<button class="btn primary sm" type="button" data-muse="' + esc(s) + '">Gebruik</button>' +
+    (m ? '<button class="btn sm" type="button" data-mclr="' + esc(s) + '">Wissen</button>' : '') + '</div>' +
+    '<div class="faint">Geldt tot er een nieuwere live koers binnenkomt.</div></div>';
 }
 function decimalsOf(x) { const s = String(x); const i = s.indexOf('.'); const d = i < 0 ? 0 : s.length - i - 1; return Math.min(4, Math.max(2, d)); }
 
@@ -968,11 +990,13 @@ function renderPosEditor() {
     inp('s_qty', 'Verkocht aantal', s.qty) + inp('s_price', 'Verkoopkoers (USD)', s.price) +
     inp('s_fx', 'EUR/USD bij verkoop', s.fx) + inp('s_net', 'Netto-opbrengst (EUR)', s.net) +
     inp('s_fee', 'Wisselkosten (EUR)', s.fee) + '<button class="btn danger sm" type="button" data-del="' + i + '">Aandeel verwijderen</button>' +
+    '<div class="lbl">HANDMATIGE KOERS (USD) · alleen gebruikt tot er een nieuwere live koers is · leeg = uit</div>' +
+    inp('manual', 'bv. 13,86', ((state.manual || {})[(p.ticker || '').toUpperCase()] || {}).p) + '<span></span>' +
     '</div></div>'; }).join('');
   $('posEditor').querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => { state.positions.splice(Number(b.dataset.del), 1); renderPosEditor(); }));
 }
 function readPosEditor() {
-  const out = [];
+  const out = []; manualOut = {};
   for (const row of $('posEditor').querySelectorAll('.pos-edit')) {
     const g = f => row.querySelector('[data-f="' + f + '"]').value.trim();
     const ticker = g('ticker').toUpperCase(); if (!ticker) continue;
@@ -987,6 +1011,8 @@ function readPosEditor() {
       sale = { at, qty: decToStr(sq), price: decToStr(price), fx: decToStr(fx), net: decToStr(net), fee: decToStr(parseNum(g('s_fee')) || 0n) };
       if (prev && prev.orders > 1 && parseNum(prev.price) === price) sale.orders = prev.orders;
     }
+    const mv = parseNum(g('manual')), old = (state.manual || {})[ticker];
+    manualOut[ticker] = mv && mv > 0n ? (old && parseNum(old.p) === mv ? old : { p: decToStr(mv), t: Date.now() }) : undefined;
     out.push({ ticker, name: g('name') || ticker, qty: decToStr(qty), avg: avg ? decToStr(avg) : '', avgCcy: g('avgCcy'), market: g('market'), sale });
   }
   if (!out.length) { toast('Minstens één aandeel nodig.'); return null; }
@@ -1033,6 +1059,11 @@ async function refresh(manual) {
     const quotes = { ...res.quotes };
     for (const p of state.positions) { const k = p.ticker.toUpperCase(); if (!quotes[k] && hist.quotes[k]) quotes[k] = { ...hist.quotes[k], cached: true, session: sessionAt(hist.quotes[k].t, p.market) }; }
     for (const p of state.positions) { const k = p.ticker.toUpperCase(); if (!res.quotes[k] && validSale(p)) res.errors.unshift(k + ': geen nieuwe koers ontvangen' + (quotes[k] ? ', laatst bekende koers van ' + fmtDate(quotes[k].t) + ' ' + fmtTime(quotes[k].t, TZ_BE, false) + ' gebruikt' : '')); }
+    // Handmatige koers gebruiken zolang er geen nieuwere live koers is.
+    for (const p of state.positions) {
+      const k = p.ticker.toUpperCase(), m = (state.manual || {})[k];
+      if (m && parseNum(m.p) && (!res.quotes[k] || res.quotes[k].t < m.t)) quotes[k] = { p: m.p, t: m.t, src: 'Handmatig ingevuld', feed: 'handmatig', manual: true, session: sessionAt(m.t, p.market) };
+    }
     res.quotes = quotes;
     valuation = res.fx ? computeValuation(quotes, res.fx.rate, res.at) : null;
     cryptoVal = computeCrypto(res.crypto, res.fx && res.fx.rate);
@@ -1071,6 +1102,21 @@ function wire() {
   document.querySelectorAll('.toggle').forEach(b => b.addEventListener('click', () => { const t = $(b.getAttribute('aria-controls')); const open = t.hidden; t.hidden = !open; b.setAttribute('aria-expanded', String(open)); if (open && t.id === 'settingsBody') renderSettings(); }));
   $('btnRefresh').addEventListener('click', () => refresh(true));
   $('btnCheck').addEventListener('click', runCheck);
+  const pos = $('positions');
+  pos.addEventListener('input', e => { const k = e.target.dataset && e.target.dataset.mk; if (k) manualDrafts[k] = e.target.value; });
+  pos.addEventListener('focusin', e => { if (e.target.dataset && e.target.dataset.mk) manualFocus = e.target.dataset.mk; });
+  pos.addEventListener('focusout', e => { if (e.target.dataset && e.target.dataset.mk) manualFocus = null; });
+  pos.addEventListener('click', e => {
+    const use = e.target.closest('[data-muse]'), clr = e.target.closest('[data-mclr]');
+    if (use) {
+      const k = use.dataset.muse, v = parseNum($('man_' + k).value);
+      if (!v || v <= 0n) { toast('Vul een geldige koers in, bv. 13,86.'); return; }
+      state.manual = state.manual || {}; state.manual[k] = { p: decToStr(v), t: Date.now() };
+      delete manualDrafts[k]; manualFocus = null; saveState(); toast(k + ': koers $' + fmtDec(v, 2) + ' gebruikt.'); refresh(true);
+    } else if (clr) {
+      const k = clr.dataset.mclr; if (state.manual) delete state.manual[k]; delete manualDrafts[k]; saveState(); toast(k + ': handmatige koers gewist.'); refresh(true);
+    }
+  });
   $('btnSaveKeys').addEventListener('click', () => {
     keys = { alpacaKey: $('alpacaKey').value.trim(), alpacaSecret: $('alpacaSecret').value.trim(), finnhubKey: $('finnhubKey').value.trim() };
     state.settings.refreshSec = Math.max(15, Number($('refreshSec').value) || 60);
@@ -1098,7 +1144,7 @@ function wire() {
   $('btnAddCry').addEventListener('click', () => { state.crypto = state.crypto || []; state.crypto.push({ ticker: '', name: '', qty: '', sale: null }); renderCryEditor(); });
   $('btnSaveCry').addEventListener('click', () => { const c = readCryEditor(); if (!c) return; state.crypto = c; saveState(); render(); toast('Bewaard.'); refresh(true); });
   $('btnAddPos').addEventListener('click', () => { state.positions.push({ ticker: '', name: '', qty: '', avg: '', avgCcy: 'USD', market: 'us', sale: null }); renderPosEditor(); });
-  $('btnSavePos').addEventListener('click', () => { const p = readPosEditor(); if (!p) return; state.positions = p; saveState(); $('checkForm').innerHTML = ''; render(); toast('Bewaard.'); refresh(true); });
+  $('btnSavePos').addEventListener('click', () => { const p = readPosEditor(); if (!p) return; state.positions = p; state.manual = Object.fromEntries(Object.entries(manualOut).filter(([, v]) => v)); saveState(); $('checkForm').innerHTML = ''; render(); toast('Bewaard.'); refresh(true); });
   $('btnCopyBackup').addEventListener('click', () => { const t = $('backupBox'); navigator.clipboard.writeText(t.value).then(() => toast('Gekopieerd.')).catch(() => { t.focus(); t.select(); toast('Selecteer en kopieer handmatig.'); }); });
   $('btnImportBackup').addEventListener('click', () => {
     try { const j = JSON.parse($('backupBox').value); if (!j.state || !Array.isArray(j.state.positions)) throw new Error('x'); state = { ...state, ...j.state }; if (j.hist) hist = { points: j.hist.points || [], last: j.hist.last || null }; saveState(); saveHist(); renderSettings(); render(); toast('Geïmporteerd.'); refresh(true); }
