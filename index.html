@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hold vs Cash">
+<meta name="theme-color" content="#0b0e12">
+<title>Hold vs Cash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: één kolom, max 600px, donker zoals Trading 212. Alles op één scherm, instellingen inklapbaar. */
+:root {
+  color-scheme: dark;
+  --bg: #0b0e12;
+  --surface: #141a21;
+  --surface-2: #1b232c;
+  --line: #243040;
+  --fg: #e9eef4;
+  --muted: #8d9aab;
+  --faint: #5f6d7d;
+  --accent: #1ea5f0;
+  --accent-soft: rgba(30,165,240,.14);
+  --up: #34d27a;
+  --up-soft: rgba(52,210,122,.14);
+  --down: #ff5c63;
+  --down-soft: rgba(255,92,99,.14);
+  --warn: #f5b342;
+  --warn-soft: rgba(245,179,66,.14);
+  --font-ui: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --radius: 16px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); }
+body {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  -webkit-text-size-adjust: 100%;
+}
+main, header.top, footer { max-width: 600px; margin: 0 auto; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+h2 { font-size: 15px; font-weight: 700; letter-spacing: .01em; }
+h3 { font-size: 14px; }
+button { font: inherit; color: inherit; }
+input, select, textarea { font: inherit; }
+.num { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--font-mono); font-size: 12px; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.small { font-size: 12.5px; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.warn { color: var(--warn); }
+
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0 10px; }
+.brand { font-weight: 800; font-size: 18px; letter-spacing: -.01em; }
+.brand span { color: var(--muted); font-weight: 500; }
+.status { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.status .upd { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.live { color: var(--up); }
+.pill.ext { color: var(--accent); }
+.pill.stale { color: var(--warn); }
+.pill.off { color: var(--faint); }
+
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.tile { background: var(--surface); border-radius: var(--radius); padding: 14px 16px 12px; min-width: 0; }
+.tile.wide { grid-column: 1 / -1; padding: 16px 18px 14px; }
+.tile .label { font-size: 11.5px; font-weight: 700; letter-spacing: .08em; color: var(--muted); }
+.tile .amount { font-size: clamp(22px, 7vw, 30px); font-weight: 800; letter-spacing: -.02em; margin-top: 4px; line-height: 1.15; white-space: nowrap; }
+.tile.wide .amount { font-size: clamp(30px, 10vw, 44px); }
+.tile .sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; min-height: 18px; }
+.tile.pos { background: linear-gradient(180deg, var(--up-soft), var(--surface)); }
+.tile.pos .amount { color: var(--up); }
+.tile.neg { background: linear-gradient(180deg, var(--down-soft), var(--surface)); }
+.tile.neg .amount { color: var(--down); }
+
+.card { background: var(--surface); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; }
+.card-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.notice { border: 1px solid var(--line); background: var(--surface-2); }
+.notice.warn { border-color: rgba(245,179,66,.45); }
+.notice p { margin: 6px 0; }
+
+.pos-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 11px 0; border-top: 1px solid var(--line); min-width: 0; align-items: start; }
+.pos-row:first-child { border-top: 0; padding-top: 4px; }
+.pos-row .name { font-weight: 700; }
+.pos-row .ticker { color: var(--muted); font-weight: 500; }
+.pos-row .meta { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.pos-row .val { text-align: right; font-weight: 800; font-size: 16px; white-space: nowrap; }
+.pos-row .chg { text-align: right; font-size: 12.5px; white-space: nowrap; }
+.pos-row.unsold .val { color: var(--muted); font-weight: 600; }
+.badge { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); color: var(--muted); vertical-align: middle; margin-left: 4px; }
+.badge.stale { background: var(--warn-soft); color: var(--warn); }
+.badge.ext { background: var(--accent-soft); color: var(--accent); }
+
+.btn { border: 0; border-radius: 12px; padding: 10px 14px; background: var(--surface-2); font-weight: 700; cursor: pointer; }
+.btn.primary { background: var(--accent); color: #04121c; }
+.btn.danger { background: var(--down-soft); color: var(--down); }
+.btn.sm { padding: 7px 11px; font-size: 13px; border-radius: 10px; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row.end { justify-content: flex-end; }
+
+.toggle { width: 100%; display: flex; justify-content: space-between; align-items: center; background: none; border: 0; padding: 2px 0; font-weight: 700; font-size: 15px; cursor: pointer; text-align: left; }
+.toggle::after { content: "+"; color: var(--muted); font-size: 20px; font-weight: 500; }
+.toggle[aria-expanded="true"]::after { content: "–"; }
+.body { padding-top: 10px; }
+
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; min-width: 0; }
+.field label { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .02em; }
+.field input, .field select, .field textarea { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 16px; }
+.field textarea { font-family: var(--font-mono); font-size: 12px; min-height: 90px; }
+.field .hint { font-size: 12px; color: var(--faint); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+@media (max-width: 420px) { .grid2 { grid-template-columns: 1fr; } }
+
+table.t { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.t th, table.t td { text-align: left; padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: top; }
+table.t th { color: var(--muted); font-weight: 700; font-size: 11.5px; letter-spacing: .04em; border-top: 0; }
+table.t td.r, table.t th.r { text-align: right; white-space: nowrap; }
+.scroll { overflow-x: auto; }
+
+.pos-edit { padding: 12px 0; border-top: 1px solid var(--line); }
+.pos-edit .g { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+.pos-edit .g.sale { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.pos-edit .lbl { grid-column: 1 / -1; font-size: 11.5px; font-weight: 700; color: var(--muted); letter-spacing: .04em; margin-top: 2px; }
+.pos-edit input, .pos-edit select { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 15px; min-width: 0; }
+.pos-edit .full { grid-column: 1 / -1; }
+
+#chart svg { width: 100%; height: auto; display: block; }
+.chart-cap { font-size: 12.5px; color: var(--muted); min-height: 18px; margin-bottom: 4px; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.legend i { display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--accent); vertical-align: middle; margin-right: 6px; }
+.legend i.dash { border-top-style: dashed; border-color: var(--muted); }
+
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--surface-2); border: 1px solid var(--line); padding: 10px 14px; border-radius: 12px; font-size: 13.5px; z-index: 50; max-width: calc(100vw - 32px); }
+footer { font-size: 12px; color: var(--faint); padding: 6px 2px 0; }
+footer p { margin: 6px 0; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+ul.errs { margin: 6px 0 0 18px; padding: 0; font-size: 12.5px; color: var(--warn); }
+ul.errs.soft { color: var(--faint); }
+.check-res { margin-top: 10px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1 class="brand">Hold <span>vs</span> Cash</h1>
+  <div class="status">
+    <span class="pill off" id="sessionPill">Geen koersen</span>
+    <span class="upd" id="updatedLbl"></span>
+  </div>
+</header>
+
+<main>
+  <section class="card notice" id="setupCard" hidden></section>
+
+  <section class="tiles">
+    <div class="tile" id="holdTile"><div class="label">HOLD</div><div class="amount num" id="holdAmt">—</div><div class="sub" id="holdSub">Wat de verkochte aandelen nu waard zouden zijn</div></div>
+    <div class="tile" id="cashTile"><div class="label">CASH</div><div class="amount num" id="cashAmt">—</div><div class="sub" id="cashSub">Wat de verkoop netto opbracht</div></div>
+    <div class="tile wide" id="diffTile"><div class="label">VERSCHIL</div><div class="amount num" id="diffAmt">—</div><div class="sub" id="diffSub">Cash min hold</div></div>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><div><h2>Aandelen</h2><div class="small muted">Waarde alsof je nog had · koers · verandering in EUR sinds verkoop</div></div><button class="btn sm" id="btnRefresh" type="button">Vernieuwen</button></div>
+    <div id="positions"></div>
+    <ul class="errs" id="errList" hidden></ul>
+  </section>
+
+  <section class="card">
+    <div class="card-h"><h2>HOLD t.o.v. CASH sinds de verkoop</h2></div>
+    <div class="chart-cap" id="chartCap"></div>
+    <div id="chart"></div>
+    <div class="legend"><span><i></i>HOLD</span><span><i class="dash"></i>CASH</span></div>
+  </section>
+
+  <section class="card">
+    <button class="toggle" type="button" aria-expanded="false" aria-controls="controlBody">Controle met Trading 212</button>
+    <div class="body" id="controlBody" hidden>
+      <p class="small muted" style="margin:0 0 8px">Per aandeel zie je welke koers, sessie en bron de app gebruikt. Leg ze naast de cijfers in Trading 212.</p>
+      <div class="scroll"><table class="t" id="feedTable"></table></div>
+      <dl class="kv" id="fxInfo" style="margin-top:10px"></dl>
+      <h3 style="margin:14px 0 6px">Vergelijk met Trading 212</h3>
+      <p class="small muted" style="margin:0 0 8px">Vul de koersen in die Trading 212 nu toont (bovenaan het aandeel, bv. <span class="mono">$899.42</span>). Optioneel de wisselkoers. De app berekent de afwijking en het effect op HOLD.</p>
+      <div id="checkForm"></div>
+      <div class="row end"><button class="btn primary sm" type="button" id="btnCheck">Vergelijk</button></div>
+      <div class="check-res" id="checkRes"></div>
+      <div id="checkHist"></div>
+      <h3 style="margin:16px 0 6px">Wat de app wel en niet exact kan</h3>
+      <ul class="small muted" style="margin:0;padding-left:18px">
+        <li><strong>Verkoop</strong>: koers, wisselkoers, netto-opbrengst en wisselkosten komen rechtstreeks uit je Trading 212-export. Aantal × verkoopkoers ÷ wisselkoers is tot op de cent gelijk aan netto + wisselkosten; dat is gecontroleerd.</li>
+        <li><strong>Rekenwijze</strong>: identiek aan Trading 212: aantal × laatste koers (USD) ÷ EUR/USD, per positie afgerond op de cent en opgeteld. Uit je schermafbeeldingen is dit tot op enkele centen bevestigd (Trading 212 toont koersen op 2 decimalen maar rekent met meer).</li>
+        <li><strong>Koersen</strong>: Trading 212 gebruikt eigen datafeeds (regulier, pre-market, after-hours en overnight via Blue Ocean). Deze app gebruikt Alpaca (IEX realtime, SIP 15 min vertraagd, afgeleide Blue Ocean overnight-feed) en Finnhub. Dezelfde handel, niet dezelfde feed: een koers kan op elk moment enkele centen verschillen.</li>
+        <li><strong>Wisselkoers</strong>: Trading 212 gebruikt een live interbankkoers. De app gebruikt de live OANDA-middenkoers via Finnhub (of een terugvaloptie, altijd zichtbaar hierboven). Verschil typisch 0,00–0,05%.</li>
+        <li><strong>Exact €0,00 op elk moment</strong> is alleen mogelijk met de interne koersfeed van Trading 212, en die is niet publiek. Verwacht enkele euro's afwijking op dit bedrag; tientallen euro's wijzen op een verouderde sessiekoers (badge "verouderd"). Meet de werkelijke afwijking met de vergelijking hierboven.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card">
+    <button class="toggle" type="button" aria-expanded="false" aria-controls="settingsBody">Instellingen</button>
+    <div class="body" id="settingsBody" hidden>
+
+      <h3 style="margin:0 0 6px">Koersbronnen</h3>
+      <p class="small muted" style="margin:0 0 8px">Beide gratis. <strong>Alpaca</strong> (alpaca.markets → aanmelden → "Paper trading" → API-sleutels) levert realtime IEX-koersen en de overnight-sessie. <strong>Finnhub</strong> (finnhub.io → gratis API-sleutel) levert de live EUR/USD-koers en OTC-aandelen zoals SFTBY. De sleutels blijven alleen in deze browser.</p>
+      <div class="field"><label for="alpacaKey">Alpaca API Key ID</label><input id="alpacaKey" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      <div class="field"><label for="alpacaSecret">Alpaca API Secret Key</label><input id="alpacaSecret" type="password" autocomplete="off"></div>
+      <div class="field"><label for="finnhubKey">Finnhub API-sleutel</label><input id="finnhubKey" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      <div class="field"><label for="refreshSec">Automatisch vernieuwen (seconden)</label><input id="refreshSec" type="number" inputmode="numeric" min="15" max="3600" step="5"><span class="hint">Alleen terwijl de app open is. Finnhub laat 60 aanvragen per minuut toe; de app gebruikt er hooguit 7 per vernieuwing.</span></div>
+      <div class="row end"><button class="btn sm" type="button" id="btnTest">Test verbinding</button><button class="btn primary sm" type="button" id="btnSaveKeys">Bewaren</button></div>
+      <div id="testRes" class="small" style="margin-top:8px"></div>
+
+      <h3 style="margin:18px 0 6px">Trading 212-export importeren</h3>
+      <p class="small muted" style="margin:0 0 8px">Trading 212 → Menu → Geschiedenis → Exporteren (CSV met orders). De app leest aankopen en verkopen en vult alles exact in. Importeer opnieuw zodra je NBIS of SFTBY verkoopt.</p>
+      <div class="field"><input id="csvFile" type="file" accept=".csv,text/csv"></div>
+      <div class="field"><label for="csvBox">Of plak de inhoud van het CSV-bestand</label><textarea id="csvBox" spellcheck="false" placeholder="Action,Time,ISIN,Ticker,..."></textarea></div>
+      <div class="row end"><button class="btn sm" type="button" id="btnCsvPreview">Lezen</button><button class="btn primary sm" type="button" id="btnCsvApply" disabled>Toepassen</button></div>
+      <div id="csvRes" class="small" style="margin-top:8px"></div>
+
+      <h3 style="margin:18px 0 6px">Aandelen en verkopen</h3>
+      <p class="small muted" style="margin:0 0 4px">Aantal met minstens 8 decimalen, zoals Trading 212 het toont. Komma of punt als decimaalteken. Een aandeel zonder verkoopgegevens telt als "nog in bezit" en wordt niet meegeteld.</p>
+      <div id="posEditor"></div>
+      <div class="row end" style="margin-top:8px"><button class="btn sm" type="button" id="btnAddPos">Aandeel toevoegen</button><button class="btn primary sm" type="button" id="btnSavePos">Bewaren</button></div>
+
+      <h3 style="margin:18px 0 6px">Back-up</h3>
+      <p class="small muted" style="margin:0 0 6px">Alles wordt automatisch in deze browser bewaard. Kopieer dit als reserve of om op een ander toestel te gebruiken (bevat geen API-sleutels).</p>
+      <div class="field"><textarea id="backupBox" spellcheck="false"></textarea></div>
+      <div class="row end"><button class="btn sm" type="button" id="btnCopyBackup">Kopiëren</button><button class="btn sm" type="button" id="btnImportBackup">Importeren uit vak</button><button class="btn danger sm" type="button" id="btnResetHist">Grafiek wissen</button></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Alle berekeningen in EUR met 12 decimalen interne precisie; alleen de getoonde bedragen worden afgerond. Geen schattingen: zonder live koers toont de app een streepje.</p>
+  </footer>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+'use strict';
+/* ========================= Exacte decimale rekenkunde ========================= */
+const SCALE = 10n ** 12n;                 // 12 decimalen intern
+const absB = x => (x < 0n ? -x : x);
+function rdiv(n, d) {                      // deling met afronding half-away-from-zero
+  if (d < 0n) { n = -n; d = -d; }
+  const q = n / d, r = n % d;
+  if (absB(r) * 2n >= d) return r < 0n ? q - 1n : q + 1n;
+  return q;
+}
+function parseNum(s) {                     // "41.936,75" | "41936.75" | "899,42" → bigint (×1e12) of null
+  if (typeof s === 'bigint') return s;
+  if (s == null) return null;
+  s = String(s).trim().replace(/\s/g, '');
+  if (s === '') return null;
+  if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.');
+  else s = s.replace(',', '.');
+  if (/e/i.test(s)) { const f = Number(s); if (!isFinite(f)) return null; s = f.toFixed(12); }
+  if (!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
+  let neg = s[0] === '-'; if (s[0] === '-' || s[0] === '+') s = s.slice(1);
+  let [i, f = ''] = s.split('.');
+  f = f.slice(0, 12).padEnd(12, '0');
+  const v = BigInt(i || '0') * SCALE + BigInt(f);
+  return neg ? -v : v;
+}
+const dmul = (a, b) => rdiv(a * b, SCALE);
+const ddiv = (a, b) => rdiv(a * SCALE, b);
+const toCents = v => rdiv(v, 10n ** 10n);          // ×1e12 → centen (bigint)
+const fromCents = c => c * (10n ** 10n);
+function group(s) { return s.replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+function fmtCents(c, { sign = false, cur = '€' } = {}) {
+  const neg = c < 0n, a = absB(c);
+  const s = group((a / 100n).toString()) + ',' + (a % 100n).toString().padStart(2, '0');
+  return (neg ? '−' : (sign ? '+' : '')) + cur + s;
+}
+function fmtDec(v, dp, { sign = false } = {}) {     // bigint ×1e12 → "1.234,5678"
+  const neg = v < 0n, a = absB(v);
+  const r = rdiv(a, 10n ** BigInt(12 - dp));
+  const p = 10n ** BigInt(dp);
+  return (neg ? '−' : (sign ? '+' : '')) + group((r / p).toString()) + (dp ? ',' + (r % p).toString().padStart(dp, '0') : '');
+}
+function fmtPct(frac, dp = 2, sign = true) { return fmtDec(frac * 100n, dp, { sign }) + '%'; }
+function decToStr(v) { const s = fmtDec(v, 12).replace(/\./g, '').replace(',', '.').replace('−', '-'); return s.includes('.') ? s.replace(/\.?0+$/, '') : s; }
+function numToDec(x) { return parseNum(typeof x === 'number' ? x.toPrecision(15).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '') : x); }
+
+/* ========================= Tijd & sessies ========================= */
+const TZ_BE = 'Europe/Brussels', TZ_ET = 'America/New_York';
+function fmtTime(ms, tz = TZ_BE, sec = true) {
+  if (!ms) return '—';
+  return new Intl.DateTimeFormat('nl-BE', { timeZone: tz, hour: '2-digit', minute: '2-digit', second: sec ? '2-digit' : undefined, hour12: false }).format(new Date(ms));
+}
+function fmtDate(ms, tz = TZ_BE) { return new Intl.DateTimeFormat('nl-BE', { timeZone: tz, day: '2-digit', month: '2-digit' }).format(new Date(ms)); }
+function fmtDateTime(ms, tz = TZ_BE) { return new Intl.DateTimeFormat('nl-BE', { timeZone: tz, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(ms)); }
+function etParts(ms) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: TZ_ET, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(ms));
+  const g = t => (parts.find(p => p.type === t) || {}).value;
+  return { wd: g('weekday'), mins: (Number(g('hour')) % 24) * 60 + Number(g('minute')) };
+}
+// Sessie van de Amerikaanse markt (Trading 212: pre 04:00-09:30, regulier 09:30-16:00, after 16:00-20:00, overnight 20:00-04:00 ET)
+function sessionAt(ms, market = 'us') {
+  const { wd, mins } = etParts(ms);
+  const weekend = wd === 'Sat' || wd === 'Sun';
+  if (market === 'otc') return (!weekend && mins >= 570 && mins < 960) ? 'regular' : 'closed';
+  if (weekend) return (wd === 'Sun' && mins >= 1200) ? 'overnight' : 'closed';   // Blue Ocean: zondag 20:00 → vrijdag 04:00 ET
+  if (mins < 240) return 'overnight';
+  if (mins < 570) return 'pre';
+  if (mins < 960) return 'regular';
+  if (mins < 1200) return 'after';
+  return wd === 'Fri' ? 'closed' : 'overnight';
+}
+const SESSION_NL = { pre: 'Pre-market', regular: 'Regulier', after: 'After-hours', overnight: 'Overnight', closed: 'Gesloten' };
+const SESSION_CODE = { pre: 'P', regular: 'R', after: 'A', overnight: 'O', closed: 'C' };
+
+/* ========================= Opslag ========================= */
+const LS = { state: 'hvc.state.v2', keys: 'hvc.keys.v1', hist: 'hvc.hist.v2' };
+// Standaardgegevens: de aankopen van 15/10/2026 en de verkopen van 30/10/2026 uit de Trading 212-export.
+const DEFAULT_POSITIONS = [
+  { ticker: 'MU', name: 'Micron Technology', qty: '12.28197759', avg: '910.70', avgCcy: 'USD', market: 'us',
+    sale: { at: Date.parse('2026-10-30T06:40:37Z'), qty: '12.28197759', price: '903.65', fx: '1.11838974', net: '9908.85', fee: '14.89' } },
+  { ticker: 'SPCX', name: 'SpaceX', qty: '75.25531184', avg: '148.63', avgCcy: 'USD', market: 'us',
+    sale: { at: Date.parse('2026-10-30T06:41:07Z'), qty: '75.25531184', price: '140.25', fx: '1.11842059', net: '9422.86', fee: '14.16' } },
+  { ticker: 'META', name: 'Meta Platforms', qty: '15.20316735', avg: '735.82', avgCcy: 'USD', market: 'us',
+    sale: { at: Date.parse('2026-10-30T06:41:51Z'), qty: '15.20316735', price: '617.50', fx: '1.11839000', net: '8381.58', fee: '12.59' } },
+  { ticker: 'NBIS', name: 'Nebius Group', qty: '63.01501943', avg: '177.51', avgCcy: 'USD', market: 'us', sale: null },
+  { ticker: 'SFTBY', name: 'SoftBank Group (ADR)', qty: '384.23001457', avg: '15.98', avgCcy: 'USD', market: 'otc', sale: null },
+];
+let state = { positions: DEFAULT_POSITIONS.map(p => ({ ...p, sale: p.sale ? { ...p.sale } : null })), checks: [], settings: { refreshSec: 60 } };
+let hist = { points: [], last: null };
+let keys = { alpacaKey: '', alpacaSecret: '', finnhubKey: '' };
+let live = null;           // { at, quotes: {SYM: {p, t, src, feed, session}}, fx: {rate, t, src, quality}, errors: [] }
+let valuation = null;      // laatste berekening
+let refreshing = false, timer = null, csvPreview = null;
+
+function lsGet(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+function load() {
+  const s = lsGet(LS.state);
+  if (s && typeof s === 'object') state = { ...state, ...s, positions: Array.isArray(s.positions) && s.positions.length ? s.positions : state.positions, settings: { ...state.settings, ...(s.settings || {}) } };
+  const h = lsGet(LS.hist); if (h && Array.isArray(h.points)) hist = h;
+  const k = lsGet(LS.keys); if (k) keys = { ...keys, ...k };
+}
+function saveState() { if (!lsSet(LS.state, state)) toast('Opslaan mislukt: browseropslag niet beschikbaar.'); renderBackup(); }
+function saveHist() { lsSet(LS.hist, hist); }
+function saveKeys() { if (!lsSet(LS.keys, keys)) toast('Opslaan mislukt: browseropslag niet beschikbaar.'); }
+
+/* ========================= Koersbronnen ========================= */
+const hasAlpaca = () => !!(keys.alpacaKey && keys.alpacaSecret);
+const hasFinnhub = () => !!keys.finnhubKey;
+async function getJson(url, headers = {}) {
+  let r;
+  try { r = await fetch(url, { headers, cache: 'no-store' }); }
+  catch (e) { throw new Error('netwerkfout (geen verbinding of CORS geblokkeerd)'); }
+  if (!r.ok) { let t = ''; try { t = (await r.text()).slice(0, 140); } catch (e) {} throw new Error('HTTP ' + r.status + (t ? ' · ' + t : '')); }
+  return r.json();
+}
+const alpacaHeaders = () => ({ 'APCA-API-KEY-ID': keys.alpacaKey, 'APCA-API-SECRET-KEY': keys.alpacaSecret });
+async function alpacaSnapshots(symbols, feed, currency) {
+  if (!symbols.length) return {};
+  const u = new URL('https://data.alpaca.markets/v2/stocks/snapshots');
+  u.searchParams.set('symbols', symbols.join(','));
+  u.searchParams.set('feed', feed);
+  if (currency) u.searchParams.set('currency', currency);
+  const j = await getJson(u.toString(), alpacaHeaders());
+  return j && j.snapshots ? j.snapshots : j;
+}
+async function alpacaLatestTrades(symbols, feed) {
+  if (!symbols.length) return {};
+  const u = new URL('https://data.alpaca.markets/v2/stocks/trades/latest');
+  u.searchParams.set('symbols', symbols.join(','));
+  u.searchParams.set('feed', feed);
+  const j = await getJson(u.toString(), alpacaHeaders());
+  return (j && j.trades) || {};
+}
+async function finnhubQuote(symbol) {
+  const j = await getJson('https://finnhub.io/api/v1/quote?symbol=' + encodeURIComponent(symbol) + '&token=' + encodeURIComponent(keys.finnhubKey));
+  if (!j || !(j.c > 0)) throw new Error('geen koers voor ' + symbol);
+  return { p: j.c, t: (j.t || 0) * 1000 };
+}
+function addCand(c, sym, q) { if (q && q.p > 0 && q.t > 0) (c[sym] = c[sym] || []).push(q); }
+function best(list) { return (list || []).slice().sort((a, b) => b.t - a.t)[0] || null; }
+
+async function fetchFx(errors) {
+  if (hasFinnhub()) {
+    try { const q = await finnhubQuote('OANDA:EUR_USD'); return { rate: q.p, t: q.t, src: 'Finnhub · OANDA EUR/USD', quality: 'live' }; }
+    catch (e) { errors.push('Finnhub EUR/USD: ' + e.message); }
+  }
+  if (hasAlpaca()) {
+    try {
+      const probe = (state.positions.find(p => p.market !== 'otc') || {}).ticker || 'META';
+      const [usd, eur] = await Promise.all([alpacaSnapshots([probe], 'iex'), alpacaSnapshots([probe], 'iex', 'EUR')]);
+      const a = usd[probe] && usd[probe].latestTrade, b = eur[probe] && eur[probe].latestTrade;
+      if (a && b && a.p > 0 && b.p > 0 && a.t === b.t) {
+        const rate = Number(ddiv(numToDec(a.p), numToDec(b.p))) / 1e12;
+        return { rate, t: Date.parse(a.t), src: 'Alpaca · afgeleid uit EUR-notering van ' + probe, quality: 'derived' };
+      }
+      errors.push('Alpaca EUR/USD: EUR- en USD-koers niet van dezelfde handel');
+    } catch (e) { errors.push('Alpaca EUR/USD: ' + e.message); }
+  }
+  try {
+    const j = await getJson('https://api.coinbase.com/v2/exchange-rates?currency=EUR');
+    const r = j && j.data && j.data.rates && Number(j.data.rates.USD);
+    if (r > 0) return { rate: r, t: Date.now(), src: 'Coinbase referentiekoers (geen tijdstempel)', quality: 'reference' };
+  } catch (e) { errors.push('Coinbase EUR/USD: ' + e.message); }
+  try {
+    const j = await getJson('https://api.frankfurter.app/latest?from=EUR&to=USD');
+    const r = j && j.rates && Number(j.rates.USD);
+    if (r > 0) return { rate: r, t: Date.parse(j.date + 'T14:15:00Z'), src: 'ECB-referentiekoers ' + j.date + ' (dagkoers, niet live)', quality: 'daily' };
+  } catch (e) { errors.push('ECB EUR/USD: ' + e.message); }
+  return null;
+}
+
+async function fetchAll() {
+  const errors = [], cands = {};
+  const syms = state.positions.map(p => p.ticker.toUpperCase());
+  const usSyms = state.positions.filter(p => p.market !== 'otc').map(p => p.ticker.toUpperCase());
+  const otcSyms = state.positions.filter(p => p.market === 'otc').map(p => p.ticker.toUpperCase());
+  const tasks = [];
+  if (hasAlpaca()) {
+    for (const feed of ['iex', 'delayed_sip', 'overnight']) {
+      tasks.push(alpacaSnapshots(usSyms, feed).then(map => {
+        for (const s of usSyms) { const lt = map && map[s] && map[s].latestTrade; if (lt) addCand(cands, s, { p: lt.p, t: Date.parse(lt.t), src: 'Alpaca', feed }); }
+      }).catch(e => errors.push('Alpaca (' + feed + '): ' + e.message)));
+    }
+    if (otcSyms.length) tasks.push(alpacaLatestTrades(otcSyms, 'otc').then(map => {
+      for (const s of otcSyms) { const lt = map[s]; if (lt) addCand(cands, s, { p: lt.p, t: Date.parse(lt.t), src: 'Alpaca', feed: 'otc' }); }
+    }).catch(e => errors.push('Alpaca (otc): ' + e.message)));
+  }
+  if (hasFinnhub()) {
+    for (const s of syms) tasks.push(finnhubQuote(s).then(q => addCand(cands, s, { ...q, src: 'Finnhub', feed: 'quote' })).catch(e => errors.push('Finnhub (' + s + '): ' + e.message)));
+  }
+  const fxP = fetchFx(errors);
+  await Promise.all(tasks);
+  const fx = await fxP;
+  const quotes = {};
+  for (const p of state.positions) {
+    const s = p.ticker.toUpperCase(), b = best(cands[s]);
+    if (b) quotes[s] = { ...b, session: sessionAt(b.t, p.market) };
+  }
+  return { at: Date.now(), quotes, fx, errors };
+}
+
+/* ========================= Verkoop & waardering ========================= */
+function validSale(p) {
+  const s = p.sale; if (!s) return null;
+  const qty = parseNum(s.qty) || parseNum(p.qty), price = parseNum(s.price), fx = parseNum(s.fx), net = parseNum(s.net);
+  if (!qty || qty <= 0n || !price || price <= 0n || !fx || fx <= 0n || net == null || !s.at) return null;
+  return { at: s.at, qty, price, fx, net, fee: parseNum(s.fee) || 0n, eurPerShare: ddiv(price, fx), grossCents: toCents(ddiv(dmul(qty, price), fx)) };
+}
+function saleInfo() {
+  const sold = [], unsold = [];
+  let cash = 0n, gross = 0n, fee = 0n, t0 = Infinity, tLast = 0;
+  for (const p of state.positions) {
+    const v = validSale(p);
+    if (!v) { unsold.push(p); continue; }
+    sold.push({ p, v }); cash += toCents(v.net); gross += v.grossCents; fee += toCents(v.fee); t0 = Math.min(t0, v.at); tLast = Math.max(tLast, v.at);
+  }
+  if (!sold.length) return null;
+  return { sold, unsold, cashCents: cash, grossCents: gross, feeCents: fee, t0, tLast };
+}
+function computeValuation(quotes, fxRate, at) {
+  if (!fxRate) return null;
+  const fx = numToDec(fxRate);
+  const rows = []; let total = 0n, complete = true;
+  for (const p of state.positions) {
+    const s = p.ticker.toUpperCase(), q = quotes[s], sale = validSale(p);
+    const qty = sale ? sale.qty : parseNum(p.qty);
+    if (!q || !qty) { if (sale) complete = false; rows.push({ pos: p, q: null, sale }); continue; }
+    const price = numToDec(q.p);
+    const eurPerShare = ddiv(price, fx);
+    const cents = toCents(dmul(qty, eurPerShare));
+    if (sale) total += cents;
+    rows.push({ pos: p, q, sale, price, eurPerShare, cents, stale: isStale(q, p.market, at) });
+  }
+  return { at, rows, totalCents: total, complete, fx };
+}
+function isStale(q, market, now) { return sessionAt(now, market) !== 'closed' && (now - q.t) > 15 * 60e3; }
+
+/* ========================= Weergave ========================= */
+const $ = id => document.getElementById(id);
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+let toastT = null;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3500); }
+
+function render() { renderSetup(); renderHeader(); renderTiles(); renderPositions(); renderChart(); renderControl(); }
+function renderSetup() {
+  const el = $('setupCard');
+  if (!hasAlpaca() && !hasFinnhub()) {
+    el.className = 'card notice warn'; el.hidden = false;
+    el.innerHTML = '<strong>Koersbron koppelen</strong><p class="small">Open <em>Instellingen</em> en vul een gratis Alpaca- en/of Finnhub-sleutel in. Zonder koersbron toont de app geen bedragen (geen schattingen). Je verkoopgegevens staan al klaar.</p>';
+  } else if (!saleInfo()) {
+    el.className = 'card notice'; el.hidden = false;
+    el.innerHTML = '<strong>Geen verkoop ingevuld</strong><p class="small">Importeer je Trading 212-export onder <em>Instellingen</em>, of vul per aandeel de verkoopgegevens in.</p>';
+  } else el.hidden = true;
+}
+function renderHeader() {
+  const pill = $('sessionPill'), upd = $('updatedLbl');
+  const src = live || (hist.last ? { at: hist.last.at, quotes: hist.last.quotes || {} } : null);
+  if (!src || !Object.keys(src.quotes).length) { pill.className = 'pill off'; pill.textContent = 'Geen koersen'; upd.textContent = ''; return; }
+  const now = Date.now(), usSession = sessionAt(now, 'us');
+  const anyStale = state.positions.some(p => { const q = src.quotes[p.ticker.toUpperCase()]; return q && validSale(p) && isStale(q, p.market, now); });
+  pill.textContent = SESSION_NL[usSession] + (live ? '' : ' · laatst bekend');
+  pill.className = 'pill ' + (anyStale ? 'stale' : usSession === 'regular' ? 'live' : usSession === 'closed' ? 'off' : 'ext');
+  upd.textContent = 'Bijgewerkt ' + fmtTime(src.at);
+}
+function renderTiles() {
+  const si = saleInfo(), diffT = $('diffTile');
+  diffT.className = 'tile wide';
+  if (!si) {
+    $('holdAmt').textContent = '—'; $('holdSub').textContent = 'Nog geen verkoopgegevens';
+    $('cashAmt').textContent = '—'; $('cashSub').textContent = 'Nog geen verkoopgegevens';
+    $('diffAmt').textContent = '—'; $('diffSub').textContent = 'Cash min hold';
+    return;
+  }
+  $('cashAmt').textContent = fmtCents(si.cashCents);
+  $('cashSub').textContent = 'Netto-opbrengst, ' + si.sold.length + ' van ' + state.positions.length + ' verkocht' + (si.feeCents > 0n ? ' · wisselkosten ' + fmtCents(si.feeCents) + ' al afgetrokken' : '');
+  let holdCents = null, fresh = false;
+  if (valuation && valuation.complete) { holdCents = valuation.totalCents; fresh = true; }
+  else if (hist.last && hist.last.holdCents != null) holdCents = BigInt(hist.last.holdCents);
+  if (holdCents == null) {
+    $('holdAmt').textContent = '—'; $('holdSub').textContent = 'Wacht op live koersen';
+    $('diffAmt').textContent = '—'; $('diffSub').textContent = 'Cash min hold';
+    return;
+  }
+  const pct = ddiv(fromCents(holdCents - si.grossCents), fromCents(si.grossCents));
+  $('holdAmt').textContent = fmtCents(holdCents);
+  $('holdSub').innerHTML = '<span class="' + (pct < 0n ? 'down' : 'up') + '">' + fmtPct(pct) + '</span> sinds verkoop (toen ' + fmtCents(si.grossCents) + ')' + (fresh ? '' : ' · <span class="warn">niet live</span>');
+  const diff = si.cashCents - holdCents;
+  $('diffAmt').textContent = fmtCents(diff, { sign: true });
+  diffT.className = 'tile wide ' + (diff > 0n ? 'pos' : diff < 0n ? 'neg' : '');
+  $('diffSub').textContent = diff > 0n ? 'Verkopen was voordeliger: je hebt ' + fmtCents(diff) + ' meer dan wanneer je had gehouden.'
+    : diff < 0n ? 'Vasthouden was voordeliger: je zou nu ' + fmtCents(-diff) + ' meer hebben gehad.' : 'Geen verschil.';
+}
+function renderPositions() {
+  const el = $('positions');
+  const rows = valuation ? valuation.rows : state.positions.map(p => ({ pos: p, q: null, sale: validSale(p) }));
+  const lastQ = (hist.last && hist.last.quotes) || {};
+  el.innerHTML = rows.map(r => {
+    const p = r.pos, s = p.ticker.toUpperCase(), sale = r.sale;
+    let valHtml = '—', priceHtml = '', chgHtml = '', badge = '';
+    const q = r.q || (lastQ[s] ? { ...lastQ[s] } : null);
+    if (r.q) {
+      valHtml = fmtCents(r.cents);
+      priceHtml = '$' + fmtDec(r.price, decimalsOf(r.q.p));
+      if (r.stale) badge = '<span class="badge stale">verouderd</span>';
+      else if (r.q.session && r.q.session !== 'regular' && r.q.session !== 'closed') badge = '<span class="badge ext">' + SESSION_NL[r.q.session] + '</span>';
+      else if (r.q.session === 'closed') badge = '<span class="badge">slotkoers</span>';
+      if (sale) { const chg = ddiv(r.eurPerShare - sale.eurPerShare, sale.eurPerShare); chgHtml = '<span class="' + (chg < 0n ? 'down' : 'up') + '">' + fmtPct(chg) + '</span>'; }
+    } else if (q) priceHtml = '$' + fmtDec(numToDec(q.p), decimalsOf(q.p)) + ' <span class="badge">niet live</span>';
+    const avg = parseNum(p.avg);
+    const meta2 = sale ? 'Verkocht ' + fmtDate(sale.at) + ' ' + fmtTime(sale.at, TZ_BE, false) + ' aan $' + fmtDec(sale.price, 2) + ' → ' + fmtCents(toCents(sale.net)) + ' netto'
+      : '<span class="warn">Nog in bezit</span> · niet meegeteld in HOLD en CASH';
+    return '<div class="pos-row' + (sale ? '' : ' unsold') + '">' +
+      '<div><div class="name">' + esc(p.name || s) + ' <span class="ticker">' + esc(s) + '</span>' + badge + '</div>' +
+      '<div class="meta num">' + fmtDec(parseNum(p.qty) || 0n, 8) + ' st. · gem. ' + (p.avgCcy === 'EUR' ? '€' : '$') + (avg ? fmtDec(avg, 2) : '—') + '</div>' +
+      '<div class="meta num">' + meta2 + '</div></div>' +
+      '<div><div class="val num">' + valHtml + '</div><div class="chg num">' + (priceHtml ? '<span class="muted">' + priceHtml + '</span>' : '') + (chgHtml ? ' · ' + chgHtml : '') + '</div></div>' +
+      '</div>';
+  }).join('');
+  const errs = (live && live.errors) || [];
+  const ul = $('errList'); ul.hidden = !errs.length; ul.className = 'errs' + (valuation && valuation.complete ? ' soft' : ''); ul.innerHTML = errs.map(e => '<li>' + esc(e) + '</li>').join('');
+}
+function decimalsOf(x) { const s = String(x); const i = s.indexOf('.'); const d = i < 0 ? 0 : s.length - i - 1; return Math.min(4, Math.max(2, d)); }
+
+/* ---- grafiek ---- */
+function renderChart() {
+  const el = $('chart'), cap = $('chartCap'); const si = saleInfo();
+  if (!si) { cap.textContent = ''; el.innerHTML = '<p class="small muted" style="margin:4px 0">Verschijnt zodra er verkoopgegevens zijn.</p>'; return; }
+  const pts = [[si.tLast, Number(si.grossCents)]];
+  for (const p of hist.points) if (p[0] > si.tLast) pts.push([p[0], p[1]]);
+  if (valuation && valuation.complete && valuation.at > si.tLast) pts.push([valuation.at, Number(valuation.totalCents)]);
+  const cash = Number(si.cashCents);
+  const W = Math.max(320, Math.round(el.clientWidth || 400)), H = 200, mL = 54, mR = 12, mT = 14, mB = 26;
+  const t0 = pts[0][0], t1 = Math.max(pts[pts.length - 1][0], t0 + 3600e3);
+  let lo = Math.min(cash, ...pts.map(p => p[1])), hi = Math.max(cash, ...pts.map(p => p[1]));
+  if (hi - lo < 100) { lo -= 5000; hi += 5000; }
+  const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+  const X = t => mL + (t - t0) / (t1 - t0) * (W - mL - mR);
+  const Y = v => mT + (hi - v) / (hi - lo) * (H - mT - mB);
+  let g = '';
+  for (const v of niceTicks(lo, hi, 4)) g += '<line x1="' + mL + '" x2="' + (W - mR) + '" y1="' + Y(v).toFixed(1) + '" y2="' + Y(v).toFixed(1) + '" stroke="var(--line)" stroke-width="1"/>' +
+    '<text x="' + (mL - 6) + '" y="' + (Y(v) + 4).toFixed(1) + '" text-anchor="end" font-size="11" fill="var(--muted)">' + esc(compactEur(v)) + '</text>';
+  const span = t1 - t0, nx = 4;
+  for (let i = 0; i <= nx; i++) { const t = t0 + span * i / nx; g += '<text x="' + X(t).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="' + (i === 0 ? 'start' : i === nx ? 'end' : 'middle') + '" font-size="11" fill="var(--muted)">' + (span > 2 * 86400e3 ? fmtDate(t) : fmtTime(t, TZ_BE, false)) + '</text>'; }
+  const path = pts.map((p, i) => (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join(' ');
+  const area = path + ' L' + X(pts[pts.length - 1][0]).toFixed(1) + ' ' + Y(lo).toFixed(1) + ' L' + X(t0).toFixed(1) + ' ' + Y(lo).toFixed(1) + ' Z';
+  const last = pts[pts.length - 1];
+  el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="HOLD en CASH sinds de verkoop">' + g +
+    '<line x1="' + mL + '" x2="' + (W - mR) + '" y1="' + Y(cash).toFixed(1) + '" y2="' + Y(cash).toFixed(1) + '" stroke="var(--muted)" stroke-width="2" stroke-dasharray="5 5"/>' +
+    '<text x="' + (W - mR) + '" y="' + (Y(cash) - 5).toFixed(1) + '" text-anchor="end" font-size="11" fill="var(--muted)">CASH ' + esc(fmtCents(si.cashCents)) + '</text>' +
+    '<path d="' + area + '" fill="var(--accent)" fill-opacity="0.1"/>' +
+    '<path d="' + path + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<circle cx="' + X(last[0]).toFixed(1) + '" cy="' + Y(last[1]).toFixed(1) + '" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>' +
+    '<g id="cursor" hidden><line id="curL" y1="' + mT + '" y2="' + (H - mB) + '" stroke="var(--fg)" stroke-opacity=".5" stroke-width="1"/><circle id="curC" r="5" fill="var(--fg)" stroke="var(--surface)" stroke-width="2"/></g></svg>';
+  const idle = pts.length < 3 ? 'De lijn vult zich elke 5 minuten terwijl de app open is.' : 'Aanraken of bewegen voor details · ' + pts.length + ' meetpunten';
+  cap.textContent = idle;
+  const svgEl = el.querySelector('svg');
+  const move = ev => {
+    const r = svgEl.getBoundingClientRect(); const x = (ev.clientX - r.left) / r.width * W;
+    let bi = 0, bd = Infinity; pts.forEach((p, i) => { const d = Math.abs(X(p[0]) - x); if (d < bd) { bd = d; bi = i; } });
+    const p = pts[bi]; const cur = svgEl.querySelector('#cursor'); cur.removeAttribute('hidden');
+    cur.querySelector('#curL').setAttribute('x1', X(p[0])); cur.querySelector('#curL').setAttribute('x2', X(p[0]));
+    cur.querySelector('#curC').setAttribute('cx', X(p[0])); cur.querySelector('#curC').setAttribute('cy', Y(p[1]));
+    cap.textContent = fmtDate(p[0]) + ' ' + fmtTime(p[0], TZ_BE, false) + ' · HOLD ' + fmtCents(BigInt(Math.round(p[1]))) + ' · verschil ' + fmtCents(BigInt(Math.round(cash - p[1])), { sign: true });
+  };
+  svgEl.addEventListener('pointermove', move); svgEl.addEventListener('pointerdown', move);
+  svgEl.addEventListener('pointerleave', () => { svgEl.querySelector('#cursor').setAttribute('hidden', ''); cap.textContent = idle; });
+}
+function niceTicks(lo, hi, n) {
+  const raw = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
+  const step = (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p;
+  const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) out.push(v); return out;
+}
+function compactEur(cents) { return '€' + group(Math.round(cents / 100).toString()); }
+
+/* ---- controle ---- */
+function renderControl() {
+  const tbl = $('feedTable'), fxEl = $('fxInfo');
+  const src = live || (hist.last ? { at: hist.last.at, quotes: hist.last.quotes || {}, fx: hist.last.fx } : null);
+  if (!src || !Object.keys(src.quotes).length) { tbl.innerHTML = '<tr><td class="muted">Nog geen koersen opgehaald.</td></tr>'; fxEl.innerHTML = ''; }
+  else {
+    tbl.innerHTML = '<tr><th>Aandeel</th><th class="r">Koers</th><th class="r">Tijd (BE / ET)</th><th>Sessie</th><th>Bron</th></tr>' + state.positions.map(p => {
+      const s = p.ticker.toUpperCase(), q = src.quotes[s]; if (!q) return '<tr><td>' + esc(s) + '</td><td colspan="4" class="warn">geen koers ontvangen</td></tr>';
+      return '<tr><td>' + esc(s) + '</td><td class="r num">$' + fmtDec(numToDec(q.p), decimalsOf(q.p)) + '</td><td class="r mono">' + fmtTime(q.t) + ' / ' + fmtTime(q.t, TZ_ET) + '</td><td>' + SESSION_NL[q.session || sessionAt(q.t, p.market)] + (isStale(q, p.market, Date.now()) ? ' <span class="badge stale">verouderd</span>' : '') + '</td><td>' + esc(q.src + (q.feed ? ' · ' + q.feed : '')) + '</td></tr>';
+    }).join('');
+    const fx = src.fx;
+    fxEl.innerHTML = fx ? '<dt>EUR/USD</dt><dd class="num">' + fmtDec(numToDec(fx.rate), 5) + ' <span class="muted">(1 USD = €' + fmtDec(ddiv(SCALE, numToDec(fx.rate)), 5) + ')</span></dd><dt>Bron</dt><dd>' + esc(fx.src) + (fx.quality === 'live' ? '' : ' <span class="badge stale">' + (fx.quality === 'daily' ? 'dagkoers' : 'niet-live') + '</span>') + '</dd><dt>Tijd</dt><dd class="mono">' + fmtTime(fx.t) + '</dd>'
+      : '<dt>EUR/USD</dt><dd class="warn">geen wisselkoers ontvangen</dd>';
+  }
+  if (!$('checkForm').children.length) {
+    $('checkForm').innerHTML = '<div class="grid2">' + state.positions.map(p => { const s = p.ticker.toUpperCase(); return '<div class="field"><label for="chk_' + esc(s) + '">' + esc(s) + ' koers bij T212 (USD)</label><input id="chk_' + esc(s) + '" inputmode="decimal" placeholder="bv. 899,42"></div>'; }).join('') +
+      '<div class="field"><label for="chk_fx">EUR/USD bij T212 (optioneel)</label><input id="chk_fx" inputmode="decimal" placeholder="bv. 1,11844"><span class="hint">Tip: houd van elk aandeel €1 aan; T212 toont dan koers en EUR-waarde, en de wisselkoers = koers × aantal ÷ EUR-waarde.</span></div></div>';
+  }
+  renderCheckHist();
+}
+function runCheck() {
+  if (!valuation) { toast('Eerst koersen ophalen.'); return; }
+  const res = { at: Date.now(), rows: [], fx: null };
+  let devUsdSum = 0n;
+  for (const r of valuation.rows) {
+    const s = r.pos.ticker.toUpperCase(); const v = parseNum($('chk_' + s).value); if (!v || !r.q) continue;
+    const dev = ddiv(r.price - v, v);
+    res.rows.push({ s, t212: decToStr(v), feed: decToStr(r.price), dev: decToStr(dev) });
+    if (r.sale) devUsdSum += dmul(r.sale.qty, r.price - v);
+  }
+  const fxV = parseNum($('chk_fx').value);
+  if (fxV) res.fx = { t212: decToStr(fxV), feed: decToStr(valuation.fx), dev: decToStr(ddiv(valuation.fx - fxV, fxV)) };
+  res.priceEffectCents = toCents(ddiv(devUsdSum, valuation.fx)).toString();
+  if (!res.rows.length && !res.fx) { toast('Vul minstens één Trading 212-waarde in.'); return; }
+  state.checks = [res, ...(state.checks || [])].slice(0, 20); saveState();
+  $('checkRes').innerHTML = checkHtml(res);
+  renderCheckHist();
+}
+function checkHtml(res) {
+  let h = '<div class="small"><div class="muted">Vergelijking van ' + fmtDateTime(res.at) + '</div>';
+  if (res.rows.length) h += '<div class="scroll"><table class="t"><tr><th>Aandeel</th><th class="r">T212</th><th class="r">App</th><th class="r">Afwijking</th></tr>' + res.rows.map(r => '<tr><td>' + esc(r.s) + '</td><td class="r num">$' + fmtDec(parseNum(r.t212), 2) + '</td><td class="r num">$' + fmtDec(parseNum(r.feed), 2) + '</td><td class="r num ' + cls(parseNum(r.dev)) + '">' + fmtPct(parseNum(r.dev), 3) + '</td></tr>').join('') + '</table></div>' +
+    '<div style="margin-top:6px">Effect van de koersverschillen op HOLD: <strong class="num ' + cls(BigInt(res.priceEffectCents)) + '">' + fmtCents(BigInt(res.priceEffectCents), { sign: true }) + '</strong></div>';
+  if (res.fx) h += '<div>EUR/USD: T212 ' + fmtDec(parseNum(res.fx.t212), 5) + ' · app ' + fmtDec(parseNum(res.fx.feed), 5) + ' · afwijking <strong class="num ' + cls(parseNum(res.fx.dev)) + '">' + fmtPct(parseNum(res.fx.dev), 3) + '</strong></div>';
+  return h + '</div>';
+}
+function cls(v) { return v > 0n ? 'up' : v < 0n ? 'down' : ''; }
+function renderCheckHist() {
+  const el = $('checkHist'); const list = (state.checks || []).slice(1, 6);
+  el.innerHTML = list.length ? '<details style="margin-top:8px"><summary class="small muted">Eerdere vergelijkingen (' + (state.checks.length - 1) + ')</summary>' + list.map(c => checkHtml(c)).join('<hr style="border:0;border-top:1px solid var(--line)">') + '</details>' : '';
+  if (!$('checkRes').innerHTML && state.checks && state.checks[0]) $('checkRes').innerHTML = checkHtml(state.checks[0]);
+}
+
+/* ========================= Trading 212 CSV ========================= */
+function parseCsv(text) {
+  const rows = []; let row = [], field = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; } else field += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(field); rows.push(row); row = []; field = ''; }
+    else field += c;
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.length > 1);
+}
+// Leest aankopen en verkopen per ticker: de laatste reeks aankopen vormt de positie, de verkopen daarna de verkoop.
+function importT212(text) {
+  const rows = parseCsv(text); if (rows.length < 2) throw new Error('Geen regels gevonden.');
+  const head = rows[0].map(h => h.trim().toLowerCase());
+  const col = name => head.findIndex(h => h === name || h.startsWith(name));
+  const cAct = col('action'), cTime = col('time'), cTick = col('ticker'), cName = col('name'), cQty = col('no. of shares'), cPrice = col('price / share'), cFx = col('exchange rate'), cTot = col('total'), cTotCcy = head.findIndex(h => h === 'currency (total)'), cFee = col('currency conversion fee');
+  if ([cAct, cTime, cTick, cQty, cPrice, cTot].some(i => i < 0)) throw new Error('Dit lijkt geen Trading 212-export (kolommen ontbreken).');
+  const byT = {};
+  for (const r of rows.slice(1)) {
+    const act = (r[cAct] || '').toLowerCase(); const isBuy = /buy$/.test(act), isSell = /sell$/.test(act);
+    if (!isBuy && !isSell) continue;
+    const t = r[cTick].trim().toUpperCase(); if (!t) continue;
+    const at = Date.parse((r[cTime] || '').trim().replace(' ', 'T')); if (!isFinite(at)) continue;
+    (byT[t] = byT[t] || []).push({ isBuy, at, name: (r[cName] || '').trim(), qty: parseNum(r[cQty]), price: parseNum(r[cPrice]), fx: cFx >= 0 ? parseNum(r[cFx]) : null, total: parseNum(r[cTot]), totCcy: cTotCcy >= 0 ? (r[cTotCcy] || '').trim() : 'EUR', fee: cFee >= 0 ? (parseNum(r[cFee]) || 0n) : 0n });
+  }
+  const out = [], warnings = [];
+  for (const [t, list] of Object.entries(byT)) {
+    list.sort((a, b) => a.at - b.at);
+    let buys = [], sells = [], running = 0n;
+    for (const e of list) {
+      if (!e.qty || e.qty <= 0n || !e.price) continue;
+      if (e.isBuy) { if (sells.length) { buys = []; sells = []; running = 0n; } buys.push(e); running += e.qty; }
+      else { if (running <= 0n) continue; const q = e.qty <= running ? e.qty : running; if (q < e.qty) warnings.push(t + ': verkoop van ' + decToStr(e.qty) + ' groter dan positie, ' + decToStr(q) + ' meegeteld.'); sells.push({ ...e, qty: q, part: ddiv(q, e.qty) }); running -= q; }
+    }
+    if (!buys.length) continue;
+    const qty = buys.reduce((a, b) => a + b.qty, 0n), cost = buys.reduce((a, b) => a + dmul(b.qty, b.price), 0n);
+    const pos = { ticker: t, name: buys[buys.length - 1].name || t, qty: decToStr(qty), avg: decToStr(rdiv(ddiv(cost, qty), 10n ** 8n) * 10n ** 8n), sale: null };
+    if (sells.length) {
+      if (sells.some(s => s.totCcy && s.totCcy !== 'EUR')) { warnings.push(t + ': verkoop niet in EUR, overgeslagen.'); out.push(pos); continue; }
+      const sq = sells.reduce((a, s) => a + s.qty, 0n), usd = sells.reduce((a, s) => a + dmul(s.qty, s.price), 0n);
+      const net = sells.reduce((a, s) => a + dmul(s.total, s.part), 0n), fee = sells.reduce((a, s) => a + dmul(s.fee, s.part), 0n);
+      const fx = (sells.length === 1 && sells[0].fx) ? sells[0].fx : ddiv(usd, net + fee);
+      pos.sale = { at: sells[sells.length - 1].at, qty: decToStr(sq), price: decToStr(ddiv(usd, sq)), fx: decToStr(fx), net: decToStr(fromCents(toCents(net))), fee: decToStr(fromCents(toCents(fee))) };
+      if (sq < qty) warnings.push(t + ': ' + decToStr(qty - sq) + ' stuks nog in bezit; alleen het verkochte deel telt mee.');
+    }
+    out.push(pos);
+  }
+  if (!out.length) throw new Error('Geen aankopen gevonden in de export.');
+  return { positions: out, warnings };
+}
+function applyImport(imp) {
+  const existing = Object.fromEntries(state.positions.map(p => [p.ticker.toUpperCase(), p]));
+  const order = Object.keys(existing);
+  const merged = imp.positions.map(n => { const e = existing[n.ticker]; return { ticker: n.ticker, name: (e && e.name) || n.name, qty: n.qty, avg: n.avg, avgCcy: 'USD', market: (e && e.market) || 'us', sale: n.sale }; })
+    .sort((a, b) => { const ia = order.indexOf(a.ticker), ib = order.indexOf(b.ticker); return (ia < 0 ? 1e9 : ia) - (ib < 0 ? 1e9 : ib); });
+  state.positions = merged; saveState(); $('checkForm').innerHTML = ''; renderPosEditor(); render(); refresh(true);
+}
+
+/* ========================= Instellingen ========================= */
+function renderSettings() {
+  $('alpacaKey').value = keys.alpacaKey || ''; $('alpacaSecret').value = keys.alpacaSecret || ''; $('finnhubKey').value = keys.finnhubKey || '';
+  $('refreshSec').value = state.settings.refreshSec || 60;
+  renderPosEditor(); renderBackup();
+}
+function toLocalInput(ms) { const d = new Date(ms); const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+function inp(f, ph, v, extra) { return '<input data-f="' + f + '" placeholder="' + esc(ph) + '" value="' + esc(v == null ? '' : v) + '" ' + (extra || 'inputmode="decimal"') + '>'; }
+function renderPosEditor() {
+  $('posEditor').innerHTML = state.positions.map((p, i) => { const s = p.sale || {}; return '<div class="pos-edit" data-i="' + i + '"><div class="g">' +
+    inp('ticker', 'Ticker', p.ticker, 'autocapitalize="characters" spellcheck="false"') + inp('name', 'Naam', p.name, 'type="text"') +
+    inp('qty', 'Aantal (8 decimalen)', p.qty) + inp('avg', 'Gem. aankoopprijs', p.avg) +
+    '<select data-f="avgCcy"><option value="USD"' + (p.avgCcy !== 'EUR' ? ' selected' : '') + '>Aankoopprijs in USD</option><option value="EUR"' + (p.avgCcy === 'EUR' ? ' selected' : '') + '>Aankoopprijs in EUR</option></select>' +
+    '<select data-f="market"><option value="us"' + (p.market !== 'otc' ? ' selected' : '') + '>NYSE / Nasdaq (24/5)</option><option value="otc"' + (p.market === 'otc' ? ' selected' : '') + '>OTC (alleen reguliere uren)</option></select>' +
+    '</div><div class="g sale"><div class="lbl">VERKOOP (leeg = nog in bezit)</div>' +
+    '<input data-f="s_at" type="datetime-local" step="1" class="full" value="' + (s.at ? toLocalInput(s.at) : '') + '">' +
+    inp('s_qty', 'Verkocht aantal', s.qty) + inp('s_price', 'Verkoopkoers (USD)', s.price) +
+    inp('s_fx', 'EUR/USD bij verkoop', s.fx) + inp('s_net', 'Netto-opbrengst (EUR)', s.net) +
+    inp('s_fee', 'Wisselkosten (EUR)', s.fee) + '<button class="btn danger sm" type="button" data-del="' + i + '">Aandeel verwijderen</button>' +
+    '</div></div>'; }).join('');
+  $('posEditor').querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => { state.positions.splice(Number(b.dataset.del), 1); renderPosEditor(); }));
+}
+function readPosEditor() {
+  const out = [];
+  for (const row of $('posEditor').querySelectorAll('.pos-edit')) {
+    const g = f => row.querySelector('[data-f="' + f + '"]').value.trim();
+    const ticker = g('ticker').toUpperCase(); if (!ticker) continue;
+    const qty = parseNum(g('qty')); if (!qty || qty <= 0n) { toast('Ongeldig aantal bij ' + ticker); return null; }
+    const avg = parseNum(g('avg'));
+    let sale = null;
+    if (g('s_at') || g('s_price') || g('s_net')) {
+      const at = Date.parse(g('s_at')); const price = parseNum(g('s_price')), fx = parseNum(g('s_fx')), net = parseNum(g('s_net'));
+      if (!isFinite(at) || !price || !fx || net == null) { toast(ticker + ': verkoop vereist tijdstip, koers, wisselkoers en netto-opbrengst.'); return null; }
+      const sq = parseNum(g('s_qty')) || qty; if (sq > qty) { toast(ticker + ': verkocht aantal groter dan aantal.'); return null; }
+      sale = { at, qty: decToStr(sq), price: decToStr(price), fx: decToStr(fx), net: decToStr(net), fee: decToStr(parseNum(g('s_fee')) || 0n) };
+    }
+    out.push({ ticker, name: g('name') || ticker, qty: decToStr(qty), avg: avg ? decToStr(avg) : '', avgCcy: g('avgCcy'), market: g('market'), sale });
+  }
+  if (!out.length) { toast('Minstens één aandeel nodig.'); return null; }
+  return out;
+}
+function renderBackup() { $('backupBox').value = JSON.stringify({ state, hist: { points: hist.points, last: hist.last } }); }
+
+/* ========================= Verversen ========================= */
+async function refresh(manual) {
+  if (refreshing) return; if (!hasAlpaca() && !hasFinnhub()) { render(); return; }
+  refreshing = true; $('btnRefresh').disabled = true; $('btnRefresh').textContent = 'Bezig…';
+  try {
+    const res = await fetchAll(); live = res;
+    valuation = res.fx ? computeValuation(res.quotes, res.fx.rate, res.at) : null;
+    if (!res.fx) res.errors.unshift('Geen EUR/USD-koers: HOLD kan niet berekend worden.');
+    record(manual);
+    render();
+  } catch (e) { toast('Vernieuwen mislukt: ' + e.message); }
+  finally { refreshing = false; $('btnRefresh').disabled = false; $('btnRefresh').textContent = 'Vernieuwen'; }
+}
+function record(manual) {
+  if (!valuation || !valuation.complete) return;
+  const now = valuation.at, lastT = hist.points.length ? hist.points[hist.points.length - 1][0] : 0, si = saleInfo();
+  hist.last = { at: now, holdCents: Number(valuation.totalCents), fx: live.fx, quotes: live.quotes };
+  if (si && now > si.tLast && (now - lastT >= 5 * 60e3 || (manual && now - lastT >= 30e3))) {
+    hist.points.push([now, Number(valuation.totalCents), SESSION_CODE[sessionAt(now, 'us')]]);
+    if (hist.points.length > 5000) hist.points = hist.points.slice(0, -2500).filter((_, i) => i % 2 === 0).concat(hist.points.slice(-2500));
+  }
+  saveHist();
+}
+function schedule() {
+  clearInterval(timer);
+  const sec = Math.max(15, Number(state.settings.refreshSec) || 60);
+  timer = setInterval(() => { if (document.visibilityState === 'visible') refresh(false); }, sec * 1000);
+}
+
+/* ========================= Init ========================= */
+function wire() {
+  document.querySelectorAll('.toggle').forEach(b => b.addEventListener('click', () => { const t = $(b.getAttribute('aria-controls')); const open = t.hidden; t.hidden = !open; b.setAttribute('aria-expanded', String(open)); if (open && t.id === 'settingsBody') renderSettings(); }));
+  $('btnRefresh').addEventListener('click', () => refresh(true));
+  $('btnCheck').addEventListener('click', runCheck);
+  $('btnSaveKeys').addEventListener('click', () => {
+    keys = { alpacaKey: $('alpacaKey').value.trim(), alpacaSecret: $('alpacaSecret').value.trim(), finnhubKey: $('finnhubKey').value.trim() };
+    state.settings.refreshSec = Math.max(15, Number($('refreshSec').value) || 60);
+    saveKeys(); saveState(); schedule(); toast('Bewaard.'); refresh(true);
+  });
+  $('btnTest').addEventListener('click', async () => {
+    keys = { alpacaKey: $('alpacaKey').value.trim(), alpacaSecret: $('alpacaSecret').value.trim(), finnhubKey: $('finnhubKey').value.trim() };
+    const el = $('testRes'); el.textContent = 'Testen…';
+    try {
+      const r = await fetchAll();
+      el.innerHTML = state.positions.map(p => { const s = p.ticker.toUpperCase(), q = r.quotes[s]; return '<div>' + esc(s) + ': ' + (q ? '<span class="up">OK</span> $' + fmtDec(numToDec(q.p), decimalsOf(q.p)) + ' <span class="muted">(' + esc(q.src + ' ' + q.feed) + ', ' + fmtTime(q.t) + ')</span>' : '<span class="down">geen koers</span>') + '</div>'; }).join('') +
+        '<div>EUR/USD: ' + (r.fx ? '<span class="up">OK</span> ' + fmtDec(numToDec(r.fx.rate), 5) + ' <span class="muted">(' + esc(r.fx.src) + ')</span>' : '<span class="down">geen koers</span>') + '</div>' +
+        (r.errors.length ? '<ul class="errs">' + r.errors.map(e => '<li>' + esc(e) + '</li>').join('') + '</ul>' : '');
+    } catch (e) { el.textContent = 'Mislukt: ' + e.message; }
+  });
+  const csvRead = text => {
+    try { csvPreview = importT212(text); $('btnCsvApply').disabled = false;
+      $('csvRes').innerHTML = '<div class="scroll"><table class="t"><tr><th>Ticker</th><th class="r">Aantal</th><th class="r">Gem. prijs</th><th>Verkoop</th></tr>' + csvPreview.positions.map(p => '<tr><td>' + esc(p.ticker) + '</td><td class="r num">' + fmtDec(parseNum(p.qty), 8) + '</td><td class="r num">$' + fmtDec(parseNum(p.avg), 2) + '</td><td>' + (p.sale ? fmtDateTime(p.sale.at) + ' · $' + fmtDec(parseNum(p.sale.price), 2) + ' · ' + fmtCents(toCents(parseNum(p.sale.net))) + ' netto' : '<span class="warn">nog in bezit</span>') + '</td></tr>').join('') + '</table></div>' +
+        (csvPreview.warnings.length ? '<ul class="errs">' + csvPreview.warnings.map(w => '<li>' + esc(w) + '</li>').join('') + '</ul>' : '') + '<div class="muted" style="margin-top:6px">Druk op "Toepassen" om dit over te nemen (vervangt de huidige lijst).</div>';
+    } catch (e) { csvPreview = null; $('btnCsvApply').disabled = true; $('csvRes').innerHTML = '<span class="down">' + esc(e.message) + '</span>'; }
+  };
+  $('csvFile').addEventListener('change', () => { const f = $('csvFile').files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { $('csvBox').value = rd.result; csvRead(rd.result); }; rd.readAsText(f); });
+  $('btnCsvPreview').addEventListener('click', () => csvRead($('csvBox').value));
+  $('btnCsvApply').addEventListener('click', () => { if (!csvPreview) return; applyImport(csvPreview); csvPreview = null; $('btnCsvApply').disabled = true; $('csvRes').innerHTML = '<span class="up">Toegepast.</span>'; toast('Export toegepast.'); });
+  $('btnAddPos').addEventListener('click', () => { state.positions.push({ ticker: '', name: '', qty: '', avg: '', avgCcy: 'USD', market: 'us', sale: null }); renderPosEditor(); });
+  $('btnSavePos').addEventListener('click', () => { const p = readPosEditor(); if (!p) return; state.positions = p; saveState(); $('checkForm').innerHTML = ''; render(); toast('Bewaard.'); refresh(true); });
+  $('btnCopyBackup').addEventListener('click', () => { const t = $('backupBox'); navigator.clipboard.writeText(t.value).then(() => toast('Gekopieerd.')).catch(() => { t.focus(); t.select(); toast('Selecteer en kopieer handmatig.'); }); });
+  $('btnImportBackup').addEventListener('click', () => {
+    try { const j = JSON.parse($('backupBox').value); if (!j.state || !Array.isArray(j.state.positions)) throw new Error('x'); state = { ...state, ...j.state }; if (j.hist) hist = { points: j.hist.points || [], last: j.hist.last || null }; saveState(); saveHist(); renderSettings(); render(); toast('Geïmporteerd.'); refresh(true); }
+    catch (e) { toast('Ongeldige back-up.'); }
+  });
+  $('btnResetHist').addEventListener('click', () => { const b = $('btnResetHist'); if (b.dataset.arm !== '1') { b.dataset.arm = '1'; b.textContent = 'Zeker? Tik nogmaals'; setTimeout(() => { b.dataset.arm = ''; b.textContent = 'Grafiek wissen'; }, 4000); return; } hist.points = []; saveHist(); render(); b.dataset.arm = ''; b.textContent = 'Grafiek wissen'; toast('Grafiek gewist.'); });
+  let rz = null; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(renderChart, 150); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && (!live || Date.now() - live.at > 20e3)) refresh(false); });
+}
+load(); wire(); render(); schedule(); refresh(false);
+</script>
+</body>
+</html>
