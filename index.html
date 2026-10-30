@@ -159,6 +159,8 @@ ul.errs.soft { color: var(--faint); }
 .split .d { font-size: clamp(20px, 6.2vw, 26px); font-weight: 800; letter-spacing: -.02em; margin-top: 2px; white-space: nowrap; }
 .split .d.up { color: var(--up); } .split .d.down { color: var(--down); }
 .split .meta { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+.pct { font-size: .5em; font-weight: 700; margin-left: 6px; letter-spacing: 0; vertical-align: .35em; }
+.split .pct { display: block; font-size: .56em; margin: 0; vertical-align: baseline; }
 </style>
 </head>
 <body>
@@ -641,20 +643,27 @@ function parts() {
     if (valuation && valuation.complete) out.stocks = { hold: valuation.totalCents, cash: si.cashCents, fresh: !anyCached };
     else out.stocks = { hold: L && L.stocks && L.stocks.key === key ? big(L.stocks.hold) : null, cash: si.cashCents, fresh: false };   // nooit een oude HOLD over andere aandelen gebruiken
     out.stocks.key = key;
-    out.stocks.gross = si.grossCents; out.stocks.fee = si.feeCents; out.stocks.n = si.sold.length;
+    out.stocks.gross = si.grossCents; out.stocks.fee = si.feeCents; out.stocks.n = si.sold.length;   // gross = waarde op het verkoopmoment (vóór wisselkosten)
   }
   if ((state.crypto || []).some(c => validCryptoSale(c))) {
     out.crypto = null;
     if (cryptoVal && cryptoVal.complete && cryptoVal.any) out.crypto = { hold: cryptoVal.hold, cash: cryptoVal.cash, fresh: true };
+    if (out.crypto) out.crypto.gross = out.crypto.cash;   // Binance Convert zonder kosten: waarde bij verkoop = ontvangen bedrag
     const key = (state.crypto || []).filter(c => validCryptoSale(c)).map(c => c.ticker.toUpperCase() + ':' + c.sale.proceeds).sort().join(',');
     if (cryptoVal && cryptoVal.complete && cryptoVal.any) out.crypto.key = key;
     else out.crypto = { hold: L && L.crypto && L.crypto.key === key ? big(L.crypto.hold) : null, cash: L && L.crypto && L.crypto.key === key ? big(L.crypto.cash) : null, fresh: false, key };
+    out.crypto.gross = out.crypto.cash;
   }
   return out;
 }
-function diffWord(diff) {
-  return diff > 0n ? 'Verkopen was voordeliger: je hebt ' + fmtCents(diff) + ' meer dan wanneer je had gehouden.'
-    : diff < 0n ? 'Vasthouden was voordeliger: je zou nu ' + fmtCents(-diff) + ' meer hebben gehad.' : 'Geen verschil.';
+// Percentage van a t.o.v. b (beide centen), als bigint-fractie ×1e12.
+function pctOf(a, b) { return b ? ddiv(fromCents(a - b), fromCents(b)) : null; }
+function pctHtml(f, wrap) { if (f == null) return ''; const t = fmtPct(f); return '<span class="pct ' + (f > 0n ? 'up' : f < 0n ? 'down' : '') + '">' + (wrap ? '(' + t + ')' : t) + '</span>'; }
+function pctTxt(f) { return '<span class="' + (f > 0n ? 'up' : f < 0n ? 'down' : '') + '">' + fmtPct(f) + '</span>'; }
+function diffWord(diff, hold) {
+  const f = pctOf(hold + diff, hold), p = f == null ? '' : ' (' + fmtPct(f < 0n ? -f : f, 2, false) + ')';
+  return diff > 0n ? 'Verkopen was voordeliger: je hebt ' + fmtCents(diff) + p + ' meer dan wanneer je had gehouden.'
+    : diff < 0n ? 'Vasthouden was voordeliger: je zou nu ' + fmtCents(-diff) + p + ' meer hebben gehad.' : 'Geen verschil.';
 }
 function renderTiles() {
   const P = parts(), diffT = $('diffTile'); diffT.className = 'tile wide';
@@ -665,15 +674,16 @@ function renderTiles() {
   if (!list.length) { ['hold', 'cash', 'diff'].forEach(k => { $(k + 'Amt').textContent = '—'; }); $('holdSub').textContent = 'Nog geen verkoopgegevens'; $('cashSub').textContent = ''; $('diffSub').textContent = 'Cash min hold'; }
   else {
     const hold = ok ? list.reduce((a, [, v]) => a + v.hold, 0n) : null, cash = list.every(([, v]) => v.cash != null) ? list.reduce((a, [, v]) => a + v.cash, 0n) : null;
+    const gross = list.every(([, v]) => v.gross != null) ? list.reduce((a, [, v]) => a + v.gross, 0n) : null;
     $('holdAmt').textContent = hold != null ? fmtCents(hold) : '—';
-    $('holdSub').innerHTML = esc(sub('hold')) + (stale ? ' · <span class="warn">niet live</span>' : '');
+    $('holdSub').innerHTML = (hold != null && gross ? pctTxt(pctOf(hold, gross)) + ' sinds verkoop<br>' : '') + esc(sub('hold')) + (stale ? ' · <span class="warn">niet live</span>' : '');
     $('cashAmt').textContent = cash != null ? fmtCents(cash) : '—';
     $('cashSub').textContent = sub('cash');
     if (hold != null && cash != null) {
       const diff = cash - hold;
-      $('diffAmt').textContent = fmtCents(diff, { sign: true });
+      $('diffAmt').innerHTML = fmtCents(diff, { sign: true }) + pctHtml(pctOf(cash, hold));
       diffT.className = 'tile wide ' + (diff > 0n ? 'pos' : diff < 0n ? 'neg' : '');
-      $('diffSub').textContent = diffWord(diff);
+      $('diffSub').textContent = diffWord(diff, hold);
     } else {
       const missing = state.positions.filter(p => validSale(p) && !(valuation && valuation.rows.some(r => r.pos === p && r.q))).map(p => p.ticker);
       $('diffAmt').textContent = '—'; $('diffSub').textContent = missing.length ? 'Geen koers voor ' + missing.join(', ') + '. Zonder alle koersen toont de app geen verschil.' : 'Wacht op live koersen';
@@ -685,8 +695,8 @@ function renderTiles() {
     if (!v) { a.textContent = '—'; a.className = 'd num'; m.textContent = 'Niets verkocht'; return; }
     if (v.hold == null || v.cash == null) { a.textContent = '—'; a.className = 'd num'; m.textContent = 'Wacht op live koersen'; return; }
     const d = v.cash - v.hold;
-    a.textContent = fmtCents(d, { sign: true }); a.className = 'd num ' + (d > 0n ? 'up' : d < 0n ? 'down' : '');
-    m.innerHTML = 'HOLD ' + fmtCents(v.hold) + '<br>CASH ' + fmtCents(v.cash) + (extra ? '<br>' + extra : '') + (v.fresh ? '' : '<br><span class="warn">niet live</span>');
+    a.innerHTML = fmtCents(d, { sign: true }) + pctHtml(pctOf(v.cash, v.hold)); a.className = 'd num ' + (d > 0n ? 'up' : d < 0n ? 'down' : '');
+    m.innerHTML = 'HOLD ' + fmtCents(v.hold) + (v.gross ? ' · ' + pctTxt(pctOf(v.hold, v.gross)) : '') + '<br>CASH ' + fmtCents(v.cash) + (extra ? '<br>' + extra : '') + (v.fresh ? '' : '<br><span class="warn">niet live</span>');
   };
   col('stkDiff', 'stkMeta', P.stocks, P.stocks && P.stocks.fee > 0n ? 'incl. ' + fmtCents(P.stocks.fee) + ' wisselkosten' : '');
   col('cryDiff', 'cryMeta', P.crypto, 'zonder kosten');
