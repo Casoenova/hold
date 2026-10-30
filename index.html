@@ -357,7 +357,9 @@ const DEFAULT_POSITIONS = [
     sale: { at: Date.parse('2026-10-30T06:41:51Z'), qty: '15.20316735', price: '617.50', fx: '1.11839000', net: '8381.58', fee: '12.59' } },
   { ticker: 'NBIS', name: 'Nebius Group', qty: '63.01501943', avg: '177.51', avgCcy: 'USD', market: 'us',
     sale: { at: Date.parse('2026-10-30T08:00:00Z'), qty: '63.01501943', price: '160.59', fx: '1.11906998', net: '9029.29', fee: '13.56' } },
-  { ticker: 'SFTBY', name: 'SoftBank Group (ADR)', qty: '384.23001457', avg: '15.98', avgCcy: 'USD', market: 'otc', sale: null },
+  // SFTBY in twee orders verkocht (12:03:45 en 12:09:16 UTC): samengevoegd, koers en wisselkoers gewogen zodat netto + kosten exact klopt.
+  { ticker: 'SFTBY', name: 'SoftBank Group (ADR)', qty: '384.23001457', avg: '15.98', avgCcy: 'USD', market: 'otc',
+    sale: { at: Date.parse('2026-10-30T12:09:16Z'), qty: '384.23001457', price: '13.699609608843', fx: '1.119307551063', net: '4695.68', fee: '7.05', orders: 2 } },
 ];
 // Binance-conversie van 30/10/2026 14:02 lokale tijd (UTC+3) = 11:02 UTC: 0,19197729 BTC → 14.890,35015083 USDC, zonder kosten.
 const DEFAULT_CRYPTO = [
@@ -377,9 +379,11 @@ function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return 
 function load() {
   const s = lsGet(LS.state);
   if (s && typeof s === 'object') state = { ...state, ...s, positions: Array.isArray(s.positions) && s.positions.length ? s.positions : state.positions, settings: { ...state.settings, ...(s.settings || {}) } };
-  // NBIS-verkoop van 30/10 aanvullen als die nog ontbreekt (eerdere versie)
-  const nb = state.positions.find(p => p.ticker === 'NBIS'), def = DEFAULT_POSITIONS.find(p => p.ticker === 'NBIS');
-  if (nb && !nb.sale && def && def.sale && nb.qty === def.qty) nb.sale = { ...def.sale };
+  // Verkopen uit de exports aanvullen als ze op dit toestel nog ontbreken (eerdere versies)
+  for (const def of DEFAULT_POSITIONS) {
+    const mine = state.positions.find(p => p.ticker === def.ticker);
+    if (mine && def.sale && (!mine.sale || (def.sale.orders && !mine.sale.orders && mine.sale.qty !== def.sale.qty)) && parseNum(mine.qty) === parseNum(def.qty)) mine.sale = { ...def.sale };
+  }
   if (!Array.isArray(state.crypto)) state.crypto = DEFAULT_CRYPTO.map(c => ({ ...c, sale: { ...c.sale } }));
   const h = lsGet(LS.hist); if (h && Array.isArray(h.points)) hist = h;
   const k = lsGet(LS.keys); if (k) keys = { ...keys, ...k };
@@ -695,7 +699,7 @@ function renderPositions() {
       if (sale) { const chg = ddiv(r.eurPerShare - sale.eurPerShare, sale.eurPerShare); chgHtml = '<span class="' + (chg < 0n ? 'down' : 'up') + '">' + fmtPct(chg) + '</span>'; }
     } else if (q) priceHtml = '$' + fmtDec(numToDec(q.p), decimalsOf(q.p)) + ' <span class="badge">niet live</span>';
     const avg = parseNum(p.avg);
-    const meta2 = sale ? 'Verkocht ' + fmtDate(sale.at) + ' ' + fmtTime(sale.at, TZ_BE, false) + ' aan $' + fmtDec(sale.price, 2) + ' → ' + fmtCents(toCents(sale.net)) + ' netto'
+    const meta2 = sale ? 'Verkocht ' + fmtDate(sale.at) + ' ' + fmtTime(sale.at, TZ_BE, false) + (p.sale.orders > 1 ? ' (' + p.sale.orders + ' orders, gem.' : ' aan') + ' $' + fmtDec(sale.price, p.sale.orders > 1 ? 4 : 2) + (p.sale.orders > 1 ? ')' : '') + ' → ' + fmtCents(toCents(sale.net)) + ' netto'
       : '<span class="warn">Nog in bezit</span> · niet meegeteld in HOLD en CASH';
     return '<div class="pos-row' + (sale ? '' : ' unsold') + '">' +
       '<div><div class="name">' + esc(p.name || s) + ' <span class="ticker">' + esc(s) + '</span>' + badge + '</div>' +
@@ -900,7 +904,7 @@ function importT212(text) {
       const sq = sells.reduce((a, s) => a + s.qty, 0n), usd = sells.reduce((a, s) => a + dmul(s.qty, s.price), 0n);
       const net = sells.reduce((a, s) => a + dmul(s.total, s.part), 0n), fee = sells.reduce((a, s) => a + dmul(s.fee, s.part), 0n);
       const fx = (sells.length === 1 && sells[0].fx) ? sells[0].fx : ddiv(usd, net + fee);
-      pos.sale = { at: sells[sells.length - 1].at, qty: decToStr(sq), price: decToStr(ddiv(usd, sq)), fx: decToStr(fx), net: decToStr(fromCents(toCents(net))), fee: decToStr(fromCents(toCents(fee))) };
+      pos.sale = { orders: sells.length, at: sells[sells.length - 1].at, qty: decToStr(sq), price: decToStr(ddiv(usd, sq)), fx: decToStr(fx), net: decToStr(fromCents(toCents(net))), fee: decToStr(fromCents(toCents(fee))) };
       if (sq < qty) warnings.push(t + ': ' + decToStr(qty - sq) + ' stuks nog in bezit; alleen het verkochte deel telt mee.');
     }
     out.push(pos);
@@ -957,7 +961,9 @@ function readPosEditor() {
       const at = fromLocalInput(g('s_at')); const price = parseNum(g('s_price')), fx = parseNum(g('s_fx')), net = parseNum(g('s_net'));
       if (!isFinite(at) || !price || !fx || net == null) { toast(ticker + ': verkoop vereist tijdstip, koers, wisselkoers en netto-opbrengst.'); return null; }
       const sq = parseNum(g('s_qty')) || qty; if (sq > qty) { toast(ticker + ': verkocht aantal groter dan aantal.'); return null; }
+      const prev = (state.positions[Number(row.dataset.i)] || {}).sale;
       sale = { at, qty: decToStr(sq), price: decToStr(price), fx: decToStr(fx), net: decToStr(net), fee: decToStr(parseNum(g('s_fee')) || 0n) };
+      if (prev && prev.orders > 1 && parseNum(prev.price) === price) sale.orders = prev.orders;
     }
     out.push({ ticker, name: g('name') || ticker, qty: decToStr(qty), avg: avg ? decToStr(avg) : '', avgCcy: g('avgCcy'), market: g('market'), sale });
   }
