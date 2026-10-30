@@ -226,6 +226,7 @@ ul.errs.soft { color: var(--faint); }
         <li><strong>Rekenwijze</strong>: identiek aan Trading 212: aantal × laatste koers (USD) ÷ EUR/USD, per positie afgerond op de cent en opgeteld. Uit je schermafbeeldingen is dit tot op enkele centen bevestigd (Trading 212 toont koersen op 2 decimalen maar rekent met meer).</li>
         <li><strong>Koersen</strong>: Trading 212 gebruikt eigen datafeeds (regulier, pre-market, after-hours en overnight via Blue Ocean). Deze app gebruikt Alpaca (IEX realtime, SIP 15 min vertraagd, afgeleide Blue Ocean overnight-feed) en Finnhub. Dezelfde handel, niet dezelfde feed: een koers kan op elk moment enkele centen verschillen.</li>
         <li><strong>Wisselkoers</strong>: Trading 212 gebruikt een live interbankkoers. De app gebruikt de live middenkoers van Alpaca, Finnhub of Kraken, en valt alleen terug op een afgeleide of dagkoers als die er niet zijn (altijd zichtbaar hierboven). Verschil typisch 0,00–0,05%.</li>
+        <li><strong>SoftBank (SFTBY)</strong> is een OTC-aandeel. Finnhub geeft daarvan in het gratis abonnement alleen de slotkoers en Alpaca helemaal niets. De app vraagt SFTBY daarom ook bij CNBC (zonder sleutel) en, als je een sleutel invult, bij Twelve Data, en neemt de meest recente koers. De tabel hierboven toont per bron wat er binnenkwam. Werkt geen enkele bron, vul dan de koers handmatig in bij het aandeel.</li>
         <li><strong>Crypto</strong>: HOLD = aantal × live Binance-koers in USDC; CASH = ontvangen USDC. Beide worden met dezelfde Binance-koers EUR/USDC naar euro omgerekend, zodat het verschil alleen je verkoopbeslissing meet en niet de dollarkoers. Lukt Binance niet, dan gebruikt de app Coinbase en de EUR/USD-koers, met de badge "benadering".</li>
         <li><strong>Pre-market (04:00–08:00 New Yorkse tijd)</strong>: het gratis Alpaca-abonnement heeft dan alleen koersen met 15 minuten vertraging. De app toont dat met de badge "15 min vertraagd". Realtime koersen in die uren vereisen Alpaca Algo Trader Plus (betalend). Vanaf 08:00 New Yorkse tijd komen er realtime IEX-koersen bij.</li>
         <li><strong>Exact €0,00 op elk moment</strong> is alleen mogelijk met de interne koersfeed van Trading 212, en die is niet publiek. Verwacht enkele euro's afwijking op dit bedrag; tientallen euro's wijzen op een verouderde sessiekoers (badge "verouderd"). Meet de werkelijke afwijking met de vergelijking hierboven.</li>
@@ -241,7 +242,8 @@ ul.errs.soft { color: var(--faint); }
       <p class="small muted" style="margin:0 0 8px">Beide gratis. <strong>Alpaca</strong> (alpaca.markets → aanmelden → "Paper trading" → API-sleutels) levert realtime IEX-koersen en de overnight-sessie. <strong>Finnhub</strong> (finnhub.io → gratis API-sleutel) levert de live EUR/USD-koers en OTC-aandelen zoals SFTBY. De sleutels blijven alleen in deze browser.</p>
       <div class="field"><label for="alpacaKey">Alpaca API Key ID</label><input id="alpacaKey" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
       <div class="field"><label for="alpacaSecret">Alpaca API Secret Key</label><input id="alpacaSecret" type="password" autocomplete="off"></div>
-      <div class="field"><label for="finnhubKey">Finnhub API-sleutel</label><input id="finnhubKey" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      <div class="field"><label for="finnhubKey">Finnhub API-sleutel</label><input id="finnhubKey" autocomplete="off" autocapitalize="off" spellcheck="false"><span class="hint">Alleen de sleutel van je Finnhub-dashboard (20 tekens), niet twee keer.</span></div>
+      <div class="field"><label for="twelveKey">Twelve Data API-sleutel (optioneel, voor SoftBank)</label><input id="twelveKey" autocomplete="off" autocapitalize="off" spellcheck="false"><span class="hint">Gratis op twelvedata.com. Extra bron voor OTC-aandelen zoals SFTBY; de app vraagt hooguit één koers per 2 minuten.</span></div>
       <div class="field"><label for="refreshSec">Automatisch vernieuwen (seconden)</label><input id="refreshSec" type="number" inputmode="numeric" min="15" max="3600" step="5"><span class="hint">Alleen terwijl de app open is. Finnhub laat 60 aanvragen per minuut toe; de app gebruikt er hooguit 7 per vernieuwing.</span></div>
       <div class="row end"><button class="btn sm" type="button" id="btnTest">Test verbinding</button><button class="btn primary sm" type="button" id="btnSaveKeys">Bewaren</button></div>
       <div id="testRes" class="small" style="margin-top:8px"></div>
@@ -340,7 +342,7 @@ function etParts(ms) {
 function sessionAt(ms, market = 'us') {
   const { wd, mins } = etParts(ms);
   const weekend = wd === 'Sat' || wd === 'Sun';
-  if (market === 'otc') return (!weekend && mins >= 570 && mins < 960) ? 'regular' : 'closed';
+  if (market === 'otc') { if (weekend || mins < 240 || mins >= 1200) return 'closed'; return mins < 570 ? 'pre' : mins < 960 ? 'regular' : 'after'; }
   if (weekend) return (wd === 'Sun' && mins >= 1200) ? 'overnight' : 'closed';   // Blue Ocean: zondag 20:00 → vrijdag 04:00 ET
   if (mins < 240) return 'overnight';
   if (mins < 570) return 'pre';
@@ -373,7 +375,7 @@ const DEFAULT_CRYPTO = [
 ];
 let state = { positions: DEFAULT_POSITIONS.map(p => ({ ...p, sale: p.sale ? { ...p.sale } : null })), crypto: DEFAULT_CRYPTO.map(c => ({ ...c, sale: { ...c.sale } })), checks: [], settings: { refreshSec: 60 } };
 let hist = { points: [], last: null };
-let keys = { alpacaKey: '', alpacaSecret: '', finnhubKey: '' };
+let keys = { alpacaKey: '', alpacaSecret: '', finnhubKey: '', twelveKey: '' };
 let live = null;           // { at, quotes: {SYM: {p, t, src, feed, session}}, fx: {rate, t, src, quality}, errors: [] }
 let valuation = null;      // laatste berekening aandelen
 let cryptoVal = null;      // laatste berekening crypto
@@ -444,6 +446,32 @@ async function guarded(key, fn, errors, label, blockOnNetwork) {
     errors.push(label + ': ' + (e.status === 403 ? 'niet beschikbaar in je gratis abonnement' : e.message));
     return null;
   }
+}
+// CNBC (zonder sleutel): laatste koers incl. pre-market en after-hours, met tijdstempel van de handel.
+function parseCnbcTime(x) { if (!x) return NaN; return Date.parse(String(x).replace(/([+-]\d\d)(\d\d)$/, '$1:$2')); }
+async function cnbcQuotes(symbols) {
+  const u = 'https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol?symbols=' + encodeURIComponent(symbols.join('|')) + '&requestMethod=itv&noform=1&partnerId=2&fund=1&exthrs=1&output=json&events=1';
+  const j = await getJson(u);
+  const list = (j && j.FormattedQuoteResult && j.FormattedQuoteResult.FormattedQuote) || [];
+  const out = {};
+  for (const q of list) {
+    const cands = [];
+    const num = v => Number(String(v == null ? '' : v).replace(/,/g, ''));
+    if (num(q.last) > 0) cands.push({ p: String(q.last).replace(/,/g, ''), t: parseCnbcTime(q.last_time) });
+    const e = q.ExtendedMktQuote; if (e && num(e.last) > 0) cands.push({ p: String(e.last).replace(/,/g, ''), t: parseCnbcTime(e.last_time) });
+    const b = cands.filter(c => isFinite(c.t)).sort((a, b) => b.t - a.t)[0];
+    if (b && q.symbol) out[String(q.symbol).toUpperCase()] = b;
+  }
+  return out;
+}
+// Twelve Data (gratis sleutel): max. 1 aanvraag per 2 minuten, alleen voor OTC-aandelen.
+let twelveLast = 0, twelveCache = {};
+async function twelveQuote(symbol) {
+  const j = await getJson('https://api.twelvedata.com/quote?symbol=' + encodeURIComponent(symbol) + '&apikey=' + encodeURIComponent(keys.twelveKey));
+  if (!j || j.status === 'error') { const e = new Error((j && j.message) || 'fout'); e.status = j && j.code; throw e; }
+  const p = j.close, t = (Number(j.last_quote_at) || Number(j.timestamp) || 0) * 1000;
+  if (!(Number(p) > 0) || !t) throw new Error('geen koers');
+  return { p: String(p), t };
 }
 function addCand(c, sym, q) { if (q && q.p > 0 && q.t > 0) (c[sym] = c[sym] || []).push(q); }
 function best(list) { return (list || []).slice().sort((a, b) => b.t - a.t)[0] || null; }
@@ -560,13 +588,27 @@ async function fetchAll() {
   if (hasFinnhub()) {
     for (const s of syms) tasks.push(finnhubQuote(s).then(q => addCand(cands, s, { ...q, src: 'Finnhub', feed: 'quote' })).catch(e => errors.push('Finnhub (' + s + '): ' + e.message)));
   }
+  if (otcSyms.length) {
+    tasks.push(guarded('cnbc', () => cnbcQuotes(otcSyms), errors, 'CNBC (' + otcSyms.join(', ') + ')', true).then(map => {
+      if (!map) return;
+      for (const s of otcSyms) { if (map[s]) addCand(cands, s, { ...map[s], src: 'CNBC', feed: 'quote' }); else errors.push('CNBC: geen koers voor ' + s); }
+    }));
+    if (keys.twelveKey) {
+      const now = Date.now(), open = otcSyms.some(s => sessionAt(now, 'otc') !== 'closed');
+      if (now - twelveLast >= 120e3 && (open || !Object.keys(twelveCache).length)) {
+        twelveLast = now;
+        tasks.push(Promise.all(otcSyms.slice(0, 1).map(s => guarded('twelve-' + s, () => twelveQuote(s), errors, 'Twelve Data (' + s + ')').then(q => { if (q) twelveCache[s] = q; }))));
+      }
+    }
+  }
   const fxP = fetchFx(errors), crP = fetchCrypto(errors);
   await Promise.all(tasks);
+  for (const [s, q] of Object.entries(twelveCache)) addCand(cands, s, { ...q, src: 'Twelve Data', feed: 'quote' });
   const fx = await fxP, crypto = await crP;
   const quotes = {};
   for (const p of state.positions) {
     const s = p.ticker.toUpperCase(), b = best(cands[s]);
-    if (b) quotes[s] = { ...b, session: sessionAt(b.t, p.market), delayed: b.feed === 'delayed_sip' };
+    if (b) quotes[s] = { ...b, session: sessionAt(b.t, p.market), delayed: b.feed === 'delayed_sip', all: (cands[s] || []).map(c => ({ src: c.src + (c.feed && c.feed !== 'quote' ? ' ' + c.feed : ''), p: c.p, t: c.t })) };
   }
   return { at: Date.now(), quotes, fx, crypto, errors };
 }
@@ -606,7 +648,8 @@ function computeValuation(quotes, fxRate, at) {
   return { at, rows, totalCents: total, complete, fx };
 }
 // Vertraagde SIP-koersen zijn per definitie ~15 min oud; pas na 35 min heten ze verouderd. Andere feeds na 15 min.
-function isStale(q, market, now) { if (q.manual) return false; return sessionAt(now, market) !== 'closed' && (now - q.t) > (q.feed === 'delayed_sip' ? 35 : 15) * 60e3; }
+// OTC-aandelen worden dun verhandeld: de laatste handel kan legitiem een tijd oud zijn, dus pas na 60 min 'verouderd'.
+function isStale(q, market, now) { if (q.manual) return false; return sessionAt(now, market) !== 'closed' && (now - q.t) > (q.feed === 'delayed_sip' ? 35 : market === 'otc' ? 60 : 15) * 60e3; }
 function isDelayed(q, market, now) { return q.feed === 'delayed_sip' && sessionAt(now, market) !== 'closed' && !isStale(q, market, now); }
 
 /* ========================= Weergave ========================= */
@@ -854,7 +897,7 @@ function renderControl() {
   else {
     tbl.innerHTML = '<tr><th>Aandeel</th><th class="r">Koers</th><th class="r">Tijd (lokaal / New York)</th><th>Sessie</th><th>Bron</th></tr>' + state.positions.map(p => {
       const s = p.ticker.toUpperCase(), q = src.quotes[s]; if (!q) return '<tr><td>' + esc(s) + '</td><td colspan="4" class="warn">geen koers ontvangen</td></tr>';
-      return '<tr><td>' + esc(s) + '</td><td class="r num">$' + fmtDec(numToDec(q.p), decimalsOf(q.p)) + '</td><td class="r mono">' + fmtTime(q.t) + ' / ' + fmtTime(q.t, TZ_ET) + '</td><td>' + SESSION_NL[q.session || sessionAt(q.t, p.market)] + (isStale(q, p.market, Date.now()) ? ' <span class="badge stale">verouderd</span>' : isDelayed(q, p.market, Date.now()) ? ' <span class="badge stale">15 min vertraagd</span>' : '') + '</td><td>' + esc(q.src + (q.feed ? ' · ' + q.feed : '')) + '</td></tr>';
+      return '<tr><td>' + esc(s) + '</td><td class="r num">$' + fmtDec(numToDec(q.p), decimalsOf(q.p)) + '</td><td class="r mono">' + fmtTime(q.t) + ' / ' + fmtTime(q.t, TZ_ET) + '</td><td>' + SESSION_NL[q.session || sessionAt(q.t, p.market)] + (isStale(q, p.market, Date.now()) ? ' <span class="badge stale">verouderd</span>' : isDelayed(q, p.market, Date.now()) ? ' <span class="badge stale">15 min vertraagd</span>' : '') + '</td><td>' + esc(q.src + (q.feed ? ' · ' + q.feed : '')) + (q.all && q.all.length > 1 ? '<div class="faint">' + q.all.slice().sort((a, b) => b.t - a.t).map(c => esc(c.src) + ' $' + fmtDec(numToDec(c.p), decimalsOf(c.p)) + ' ' + fmtDate(c.t) + ' ' + fmtTime(c.t, TZ_BE, false)).join('<br>') + '</div>' : '') + '</td></tr>';
     }).join('');
     const fx = src.fx;
     fxEl.innerHTML = fx ? '<dt>EUR/USD</dt><dd class="num">' + fmtDec(numToDec(fx.rate), 5) + ' <span class="muted">(1 USD = €' + fmtDec(ddiv(SCALE, numToDec(fx.rate)), 5) + ')</span></dd><dt>Bron</dt><dd>' + esc(fx.src) + (fx.quality === 'live' ? '' : ' <span class="badge stale">' + (fx.quality === 'daily' ? 'dagkoers' : fx.quality === 'derived' ? 'afgeleid, zo oud als de handel' : 'niet-live') + '</span>') + '</dd><dt>Tijd</dt><dd class="mono">' + fmtTime(fx.t) + '</dd>'
@@ -966,7 +1009,7 @@ function applyImport(imp) {
 
 /* ========================= Instellingen ========================= */
 function renderSettings() {
-  $('alpacaKey').value = keys.alpacaKey || ''; $('alpacaSecret').value = keys.alpacaSecret || ''; $('finnhubKey').value = keys.finnhubKey || '';
+  $('alpacaKey').value = keys.alpacaKey || ''; $('alpacaSecret').value = keys.alpacaSecret || ''; $('finnhubKey').value = keys.finnhubKey || ''; $('twelveKey').value = keys.twelveKey || '';
   $('refreshSec').value = state.settings.refreshSec || 60;
   renderPosEditor(); renderCryEditor(); renderBackup();
 }
@@ -1118,12 +1161,12 @@ function wire() {
     }
   });
   $('btnSaveKeys').addEventListener('click', () => {
-    keys = { alpacaKey: $('alpacaKey').value.trim(), alpacaSecret: $('alpacaSecret').value.trim(), finnhubKey: $('finnhubKey').value.trim() };
+    keys = { alpacaKey: $('alpacaKey').value.trim(), alpacaSecret: $('alpacaSecret').value.trim(), finnhubKey: $('finnhubKey').value.trim(), twelveKey: $('twelveKey').value.trim() };
     state.settings.refreshSec = Math.max(15, Number($('refreshSec').value) || 60);
     saveKeys(); saveState(); schedule(); toast('Bewaard.'); refresh(true);
   });
   $('btnTest').addEventListener('click', async () => {
-    keys = { alpacaKey: $('alpacaKey').value.trim(), alpacaSecret: $('alpacaSecret').value.trim(), finnhubKey: $('finnhubKey').value.trim() };
+    keys = { alpacaKey: $('alpacaKey').value.trim(), alpacaSecret: $('alpacaSecret').value.trim(), finnhubKey: $('finnhubKey').value.trim(), twelveKey: $('twelveKey').value.trim() };
     const el = $('testRes'); el.textContent = 'Testen…';
     try {
       const r = await fetchAll();
